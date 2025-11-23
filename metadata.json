@@ -1,0 +1,7 @@
+{
+  "name": "SnapWall AI",
+  "description": "A digital polaroid wall where users can upload selfies with AI-generated captions and view them on a live display.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,60 +1,46 @@
+import { io } from 'socket.io-client';
 import { PhotoEntry } from '../types';
 
-const STORAGE_KEY = 'snapwall_photos';
-const CHANNEL_NAME = 'snapwall_updates';
+const getApiUrl = () => {
+  // If window is not defined (SSR), return localhost
+  if (typeof window === 'undefined') return `http://localhost:3000`;
+  const hostname = window.location.hostname;
+  // Use port 3000 for API, regardless of frontend port
+  return `http://${hostname}:3000`;
+};
 
-// Broadcast channel for communicating between tabs (Upload tab -> Display tab)
-const broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
+const API_URL = getApiUrl();
+const socket = io(API_URL);
 
-export const getPhotos = (): PhotoEntry[] => {
+export const getPhotos = async (): Promise<PhotoEntry[]> => {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return [];
-    
-    const parsed = JSON.parse(stored);
-    
-    // Data migration: Convert old single-image entries to array format
-    return parsed.map((item: any) => {
-      if (item.imageData && !item.images) {
-        return {
-          ...item,
-          images: [item.imageData],
-          // Remove old field if desired, or keep for safety. 
-          // We construct a clean PhotoEntry here.
-        } as PhotoEntry;
-      }
-      return item as PhotoEntry;
-    });
+    const res = await fetch(`${API_URL}/api/photos`);
+    if (!res.ok) throw new Error('Failed to fetch photos');
+    return await res.json();
   } catch (e) {
-    console.error("Failed to load photos", e);
+    console.error("Failed to load photos from server", e);
     return [];
   }
 };
 
-export const savePhoto = (photo: PhotoEntry): void => {
-  const currentPhotos = getPhotos();
-  // Keep only last 50 to prevent LocalStorage overflow
-  const updatedPhotos = [photo, ...currentPhotos].slice(0, 50);
-  
+export const savePhoto = async (photo: PhotoEntry): Promise<boolean> => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedPhotos));
-    // Notify other tabs
-    broadcastChannel.postMessage({ type: 'NEW_PHOTO', payload: photo });
+    const res = await fetch(`${API_URL}/api/photos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(photo),
+    });
+    return res.ok;
   } catch (e) {
-    console.error("Storage full or error saving", e);
-    // Emergency cleanup
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([photo]));
+    console.error("Error saving photo to server", e);
+    return false;
   }
 };
 
 export const subscribeToUpdates = (callback: (photo: PhotoEntry) => void) => {
-  broadcastChannel.onmessage = (event) => {
-    if (event.data && event.data.type === 'NEW_PHOTO') {
-      callback(event.data.payload);
-    }
-  };
+  socket.on('new_photo', callback);
   return () => {
-    broadcastChannel.onmessage = null;
+    socket.off('new_photo', callback);
   };
 };
 

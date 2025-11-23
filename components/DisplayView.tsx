@@ -34,23 +34,27 @@ const DisplayView: React.FC = () => {
 
   // Initial load & Subscription
   useEffect(() => {
-    const loaded = getPhotos();
+    const fetchPhotos = async () => {
+      const loaded = await getPhotos();
+      
+      // Check if the latest photo is new (within 15 seconds) to trigger spotlight
+      // This handles the case where the user uploads and immediately navigates to the wall
+      const latest = loaded[0];
+      const isNew = latest && (Date.now() - latest.timestamp < 15000);
+
+      if (isNew) {
+        setSpotlightPhoto(latest);
+        setSpotlightState('entering');
+        // Show rest of photos in grid, omitting the new one until animation is done
+        setPhotos(loaded.slice(1));
+      } else {
+        setPhotos(loaded);
+      }
+    };
     
-    // Check if the latest photo is new (within 15 seconds) to trigger spotlight
-    // This handles the case where the user uploads and immediately navigates to the wall
-    const latest = loaded[0];
-    const isNew = latest && (Date.now() - latest.timestamp < 15000);
+    fetchPhotos();
 
-    if (isNew) {
-      setSpotlightPhoto(latest);
-      setSpotlightState('entering');
-      // Show rest of photos in grid, omitting the new one until animation is done
-      setPhotos(loaded.slice(1));
-    } else {
-      setPhotos(loaded);
-    }
-
-    // When new photos arrive via BroadcastChannel, add them to the queue 
+    // When new photos arrive via WebSocket, add them to the queue 
     const unsubscribe = subscribeToUpdates((newPhoto) => {
       setQueue((prev) => [...prev, newPhoto]);
     });

@@ -14,7 +14,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: "*", // Allow all origins for now (easier for mobile testing)
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST", "DELETE"]
   }
 });
 
@@ -77,6 +77,26 @@ app.post('/api/photos', async (req, res) => {
     res.status(201).json({ success: true });
   } catch (error) {
     console.error('Upload error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/photos/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const initialLength = photos.length;
+    photos = photos.filter(p => p.id !== id);
+
+    if (photos.length === initialLength) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    await savePhotosToDisk();
+    io.emit('delete_photo', id);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

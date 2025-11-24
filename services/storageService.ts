@@ -37,10 +37,29 @@ export const savePhoto = async (photo: PhotoEntry): Promise<boolean> => {
   }
 };
 
+export const deletePhoto = async (id: string): Promise<boolean> => {
+  try {
+    const res = await fetch(`${API_URL}/api/photos/${id}`, {
+      method: 'DELETE',
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("Error deleting photo", e);
+    return false;
+  }
+};
+
 export const subscribeToUpdates = (callback: (photo: PhotoEntry) => void) => {
   socket.on('new_photo', callback);
   return () => {
     socket.off('new_photo', callback);
+  };
+};
+
+export const subscribeToDelete = (callback: (id: string) => void) => {
+  socket.on('delete_photo', callback);
+  return () => {
+    socket.off('delete_photo', callback);
   };
 };
 

@@ -1,13 +1,12 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getPhotos, subscribeToUpdates } from '../services/storageService';
+import { QRCodeSVG } from 'qrcode.react';
+import { getPhotos, subscribeToUpdates, subscribeToDelete } from '../services/storageService';
 import { PhotoEntry } from '../types';
 import { Polaroid } from './Polaroid';
 
 type SpotlightState = 'idle' | 'entering' | 'visible' | 'exiting';
 
 const DisplayView: React.FC = () => {
-  const navigate = useNavigate();
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [queue, setQueue] = useState<PhotoEntry[]>([]);
   const [numCols, setNumCols] = useState(3);
@@ -15,6 +14,14 @@ const DisplayView: React.FC = () => {
   // Spotlight Animation State
   const [spotlightPhoto, setSpotlightPhoto] = useState<PhotoEntry | null>(null);
   const [spotlightState, setSpotlightState] = useState<SpotlightState>('idle');
+  
+  // Ref to track spotlight photo for event handlers to avoid stale closures
+  const spotlightPhotoRef = useRef<PhotoEntry | null>(null);
+
+  // Update ref when state changes
+  useEffect(() => {
+    spotlightPhotoRef.current = spotlightPhoto;
+  }, [spotlightPhoto]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -59,7 +66,22 @@ const DisplayView: React.FC = () => {
       setQueue((prev) => [...prev, newPhoto]);
     });
 
-    return () => unsubscribe();
+    // Handle deletions
+    const unsubscribeDelete = subscribeToDelete((deletedId) => {
+      setPhotos(prev => prev.filter(p => p.id !== deletedId));
+      // Also remove from queue if it hasn't been shown yet
+      setQueue(prev => prev.filter(p => p.id !== deletedId));
+      
+      // Check against ref to see if we need to remove current spotlight
+      if (spotlightPhotoRef.current && spotlightPhotoRef.current.id === deletedId) {
+         setSpotlightState('exiting');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeDelete();
+    };
   }, []);
 
   // Distribute photos into columns for JS Masonry
@@ -119,21 +141,49 @@ const DisplayView: React.FC = () => {
     <div className="h-screen bg-zinc-950 text-white overflow-hidden relative flex flex-col">
       
       {/* Background Wrapper - Blurs when spotlight is active */}
-      <div className={`flex-grow flex flex-col transition-all duration-1000 ease-in-out ${isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''}`}>
+      <div className={`flex-grow flex flex-col relative transition-all duration-1000 ease-in-out ${isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''}`}>
         
-        {/* Floating Upload Button (Replacing Header) */}
-        <div className="absolute top-6 right-6 z-40">
-           <button 
-              onClick={() => navigate('/')}
-              className="bg-zinc-900/50 hover:bg-zinc-800/80 backdrop-blur-md text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 px-4 py-2 rounded-full text-sm font-medium transition-all shadow-lg hover:shadow-zinc-500/10"
-            >
-              Open Upload
-            </button>
+        {/* Background Video */}
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          <video 
+            autoPlay 
+            loop 
+            muted 
+            playsInline
+            className="w-full h-full object-cover"
+          >
+            <source src="/bg.mp4" />
+          </video>
+          {/* Dark overlay for contrast */}
+          <div className="absolute inset-0 bg-black/40"></div>
         </div>
+
+        {/* Logo & QR Code Container */}
+        <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
+          {/* QR Code */}
+          <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-white/20 transition-transform hover:scale-105">
+             <QRCodeSVG 
+                value="http://192.168.0.70:5173/" 
+                size={100}
+                level="M"
+                bgColor="transparent"
+                fgColor="#ffffff"
+             />
+             <p className="text-center text-xs font-medium mt-2 text-white/90 drop-shadow-md">Scan to Upload</p>
+          </div>
+
+          {/* Logo */}
+          <img 
+            src="/logo masthead 2.png" 
+            alt="Holiday Tours" 
+            className="w-32 md:w-32 h-auto drop-shadow-lg opacity-90"
+          />
+        </div>
+        
 
         <main 
           ref={containerRef}
-          className="flex-grow relative overflow-hidden pt-4"
+          className="flex-grow relative z-10 overflow-hidden pt-4"
         >
           {photos.length === 0 && !spotlightPhoto ? (
             <div className="h-full flex flex-col items-center justify-center text-zinc-600 opacity-50">

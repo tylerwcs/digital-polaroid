@@ -10,6 +10,7 @@ const DisplayView: React.FC = () => {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [queue, setQueue] = useState<PhotoEntry[]>([]);
   const [numCols, setNumCols] = useState(3);
+  const [uploadUrl, setUploadUrl] = useState<string>('');
   
   // Spotlight Animation State
   const [spotlightPhoto, setSpotlightPhoto] = useState<PhotoEntry | null>(null);
@@ -37,6 +38,17 @@ const DisplayView: React.FC = () => {
     handleResize(); // Init
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Determine URL to encode in QR code
+  useEffect(() => {
+    // Prefer explicit URL for hosted environments; fall back to current origin.
+    const explicit = import.meta.env.VITE_UPLOAD_URL as string | undefined;
+    if (explicit) {
+      setUploadUrl(explicit);
+    } else if (typeof window !== 'undefined') {
+      setUploadUrl(window.location.origin);
+    }
   }, []);
 
   // Initial load & Subscription
@@ -161,16 +173,18 @@ const DisplayView: React.FC = () => {
         {/* Logo & QR Code Container */}
         <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
           {/* QR Code */}
-          <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-white/20 transition-transform hover:scale-105">
-             <QRCodeSVG 
-                value="http://192.168.0.70:5173/" 
+          {uploadUrl && (
+            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-white/20 transition-transform hover:scale-105">
+              <QRCodeSVG 
+                value={uploadUrl} 
                 size={100}
                 level="M"
                 bgColor="transparent"
                 fgColor="#ffffff"
-             />
-             <p className="text-center text-xs font-medium mt-2 text-white/90 drop-shadow-md">Scan to Upload</p>
-          </div>
+              />
+              <p className="text-center text-xs font-medium mt-2 text-white/90 drop-shadow-md">Scan to Upload</p>
+            </div>
+          )}
 
           {/* Logo */}
           <img 

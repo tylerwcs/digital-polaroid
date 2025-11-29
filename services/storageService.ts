@@ -2,14 +2,15 @@ import { io } from 'socket.io-client';
 import { PhotoEntry } from '../types';
 
 const getApiUrl = () => {
-  // If window is not defined (SSR), return localhost
+  // If window is not defined (SSR), assume local backend
   if (typeof window === 'undefined') return `http://localhost:3000`;
   const hostname = window.location.hostname;
-  // Use port 3000 for API, regardless of frontend port
   return `http://${hostname}:3000`;
 };
 
-const API_URL = getApiUrl();
+// Prefer explicit API URL for deployed environments (e.g. Render),
+// fall back to local dev assumption.
+const API_URL = import.meta.env.VITE_API_URL || getApiUrl();
 const socket = io(API_URL);
 
 export const getPhotos = async (): Promise<PhotoEntry[]> => {

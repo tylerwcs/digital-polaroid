@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const API_KEY = process.env.API_KEY || '';
+// For Vite apps, use a VITE_ env var so it can be injected at build time.
+// In production (Render), set VITE_GEMINI_API_KEY on the Static Site.
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 // Initialize client safely
 let aiClient: GoogleGenAI | null = null;

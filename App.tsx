@@ -2,6 +2,7 @@ import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import UploadView from './components/UploadView';
 import DisplayView from './components/DisplayView';
+import DisplayViewGrid from './components/DisplayViewGrid';
 import AdminView from './components/AdminView';
 import { ToastProvider } from './context/ToastContext';
 
@@ -14,6 +15,8 @@ const App: React.FC = () => {
           <Route path="/" element={<UploadView />} />
           {/* Display route for the big screen */}
           <Route path="/wall" element={<DisplayView />} />
+          {/* 6-Column Grid Display route (no spotlight) */}
+          <Route path="/wall-6" element={<DisplayViewGrid />} />
           {/* Admin route */}
           <Route path="/admin" element={<AdminView />} />
         </Routes>

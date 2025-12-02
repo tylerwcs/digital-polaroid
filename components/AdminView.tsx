@@ -89,12 +89,14 @@ const AdminView: React.FC = () => {
       </header>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {photos.map((photo) => (
+        {photos.map((photo) => {
+          const previewImage = photo.imageUrl || (photo.images && photo.images[0]) || '';
+          return (
           <div key={photo.id} className="bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 group relative">
-            {photo.images[0] ? (
+            {previewImage ? (
               <div className="aspect-square relative">
                  <img 
-                  src={photo.images[0]} 
+                  src={previewImage} 
                   alt="Submission" 
                   className="w-full h-full object-cover"
                 />
@@ -130,8 +132,8 @@ const AdminView: React.FC = () => {
                 {new Date(photo.timestamp).toLocaleString()}
               </p>
             </div>
-          </div>
-        ))}
+            </div>
+        )})}
       </div>
     </div>
   );

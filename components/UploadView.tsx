@@ -14,6 +14,7 @@ const UploadView: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [stage, setStage] = useState<'idle' | 'ejecting' | 'spotlight'>('idle');
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -22,9 +23,17 @@ const UploadView: React.FC = () => {
       try {
         const compressedResult = await compressImage(file);
         setSelectedImage(compressedResult);
+        setStage('ejecting');
+        
+        // Transition to spotlight after eject animation
+        setTimeout(() => {
+          setStage('spotlight');
+        }, 1200);
+
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not process image. Please try another.";
         console.error("Error processing image", error);
-        showToast("Could not process image. Please try another.", "error");
+        showToast(message, "error");
       }
     }
     // Reset input
@@ -33,13 +42,19 @@ const UploadView: React.FC = () => {
 
   const removeImage = () => {
     setSelectedImage(null);
+    setStage('idle');
+    setCaption('');
   };
 
   const handleSubmit = async () => {
     // Require either an image OR a caption
-    if (!selectedImage && !caption.trim()) return;
+    if (!selectedImage && !caption.trim()) {
+       showToast("Take a photo or write a note first!", "error");
+       return;
+    }
 
     setIsUploading(true);
+
 
     // AI Validation
     if (caption.trim()) {
@@ -58,24 +73,25 @@ const UploadView: React.FC = () => {
     
     const newPhoto: PhotoEntry = {
       id: Date.now().toString(),
-      images: selectedImage ? [selectedImage] : [], // Empty array if no image
+      images: selectedImage ? [selectedImage] : [], 
       caption: caption || (selectedImage ? "Happy 50th Anniversary to HTT!" : "Just saying hi!"),
       timestamp: Date.now(),
       rotation: Math.random() * 6 - 3,
     };
 
-    const success = await savePhoto(newPhoto);
+    const result = await savePhoto(newPhoto);
     
-    if (success) {
+    if (result.success) {
       setTimeout(() => {
         setIsUploading(false);
         setSelectedImage(null);
         setCaption('');
+        setStage('idle');
         showToast("Posted to the wall!", "success");
       }, 500);
     } else {
       setIsUploading(false);
-      showToast("Could not save photo. Check connection.", "error");
+      showToast(result.error || "Could not save photo. Check connection.", "error");
     }
   };
 
@@ -86,99 +102,202 @@ const UploadView: React.FC = () => {
   const canSubmit = (selectedImage || caption.trim().length > 0) && !isUploading;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-6 flex flex-col max-w-md mx-auto font-sans">
-      <header className="mb-6 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-white tracking-tight">
-          SnapWall
-        </h1>
-      </header>
+    <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      
+      {/* Background Ambience */}
+      <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 to-zinc-950 opacity-50 pointer-events-none" />
+      
+      {/* Spotlight Overlay */}
+      <div 
+        className={`fixed inset-0 bg-black/60 backdrop-blur-md z-40 transition-all duration-1000 pointer-events-none ${
+          stage === 'spotlight' ? 'opacity-100' : 'opacity-0'
+        }`} 
+      />
 
-      <main className="flex-grow flex flex-col gap-6">
-        {/* Intro / Guide */}
-        <div className="text-center space-y-1 px-4">
-          <p className="text-zinc-300 font-medium"> 🌟 Share your moment 🌟</p>
-          <p className="text-sm text-zinc-500">
-            Upload a photo or leave a message for everyone to see.
-          </p>
+      <div className={`relative z-10 flex flex-col items-center justify-center w-full max-w-lg h-screen transition-all duration-500 ${stage === 'spotlight' ? 'z-50' : ''}`}>
+        
+        {/* INTRO TEXT - Fades out when not idle */}
+        <div className={`
+           text-center mb-24 transition-all duration-700
+           ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
+        `}>
+           <h2 className="text-4xl font-marker text-white mb-2 tracking-wider transform -rotate-2">
+             Share the Moments!
+           </h2>
+           <p className="text-zinc-400 text-sm max-w-xs mx-auto leading-relaxed">
+             Upload all the photos taken today to the digital wall for everyone to see!
+           </p>
         </div>
 
-        {/* Image Preview Area */}
-        <div className="flex flex-col gap-3 items-center">
-          <div 
-            onClick={!selectedImage ? triggerCamera : undefined}
-            className={`
-              relative w-64 rounded-xl border-2 border-dashed 
-              flex flex-col items-center justify-center transition-all overflow-hidden group
-              ${selectedImage ? 'border-transparent' : 'aspect-square border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 cursor-pointer'}
-            `}
-          >
-            {selectedImage ? (
-              <>
-                <img 
-                  src={selectedImage} 
-                  alt="Preview" 
-                  className="w-full h-auto block" 
-                />
-                <button
-                  onClick={(e) => { e.stopPropagation(); removeImage(); }}
-                  className="absolute top-4 right-4 bg-zinc-900/80 text-white p-2 rounded-full hover:bg-red-500/80 transition-colors shadow-lg backdrop-blur-sm"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </>
-            ) : (
-              <div className="text-center p-4">
-                <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-zinc-700 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-zinc-400">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-                  </svg>
-                </div>
-                <p className="text-zinc-300 text-sm font-medium">Upload a photo</p>
-                <p className="text-xs text-zinc-500 mt-1">(Optional)</p>
-              </div>
-            )}
-            
-            <input 
-              type="file" 
-              accept="image/*" 
-              ref={fileInputRef} 
-              onChange={handleFileSelect} 
-              className="hidden" 
-              multiple={false}
-            />
+        {/* Camera & Photo Wrapper to keep them anchored together */}
+        <div className="relative w-[320px] flex flex-col items-center">
+
+          {/* GUIDANCE HINT - Only visible in idle */}
+          <div className={`
+            absolute -top-20 right-4 z-40 flex flex-col items-center
+            transition-all duration-700 delay-300
+            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}
+          `}>
+            <p className="font-marker text-2xl text-white -rotate-6 mb-[-10px] mr-0">
+              Tap lens to snap!
+            </p>
+            <svg 
+              className="w-16 h-16 text-white transform rotate-12 drop-shadow-md" 
+              viewBox="0 0 100 100" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="3" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              {/* Hand-drawn style arrow pointing down-left towards the lens */}
+              <path d="M80,10 C60,40 90,60 40,80" />
+              <path d="M45,70 L40,80 L55,85" />
+            </svg>
           </div>
+
+          {/* CAMERA BODY */}
+          <div className={`
+              relative w-full bg-[#f3f3f3] rounded-[40px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] pt-8 pb-12 px-6 flex flex-col items-center border-b-8 border-gray-300 z-30 
+              transition-all duration-1000 ease-in-out transform origin-center
+              ${stage === 'spotlight' ? 'scale-90 blur-sm grayscale brightness-50' : 'scale-100 blur-0 grayscale-0 brightness-100'}
+          `}>
+            
+            {/* Top Row: Flash & Viewfinder */}
+            <div className="w-full flex justify-between items-start mb-6 px-2">
+              {/* Flash */}
+              <div className={`
+                w-24 h-12 bg-gray-800 rounded-xl border-2 border-gray-600 relative overflow-hidden
+                ${isUploading ? 'animate-pulse bg-yellow-100/80' : ''}
+              `}>
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent" />
+                <div className="absolute inset-0 grid grid-cols-6 gap-0.5 opacity-30">
+                  {[...Array(12)].map((_, i) => <div key={i} className="bg-white/20 rounded-sm" />)}
+                </div>
+              </div>
+              
+              {/* Viewfinder */}
+              <div className="w-12 h-12 bg-[#1a1a1a] rounded-xl border-2 border-gray-700 flex items-center justify-center">
+                  <div className="w-4 h-4 bg-black/50 rounded-full blur-sm" />
+              </div>
+            </div>
+
+            {/* Main Feature Row */}
+            <div className="relative w-full flex justify-center items-center">
+              
+              {/* Rainbow Stripe */}
+              <div className="absolute left-1/2 -translate-x-1/2 top-full h-16 w-6 flex z-0">
+                <div className="flex-1 bg-[#FF3B30]" /> {/* Red */}
+                <div className="flex-1 bg-[#FF9500]" /> {/* Orange */}
+                <div className="flex-1 bg-[#FFCC00]" /> {/* Yellow */}
+                <div className="flex-1 bg-[#4CD964]" /> {/* Green */}
+                <div className="flex-1 bg-[#5AC8FA]" /> {/* Blue */}
+              </div>
+
+            {/* LENS ASSEMBLY (Trigger) */}
+            <div 
+              onClick={triggerCamera}
+              className="relative w-40 h-40 rounded-full bg-[#1a1a1a] border-[6px] border-[#2a2a2a] flex items-center justify-center cursor-pointer shadow-xl z-10 group active:scale-95 transition-transform animate-pulse-subtle"
+            >
+                {/* Lens Details */}
+                <div className="w-32 h-32 rounded-full bg-black border border-gray-800 flex items-center justify-center relative overflow-hidden">
+                    {/* Reflections */}
+                    <div className="absolute top-6 right-6 w-8 h-4 bg-white/10 rounded-full rotate-45 blur-md" />
+                    <div className="absolute bottom-8 left-8 w-4 h-2 bg-white/5 rounded-full rotate-45 blur-sm" />
+                    
+                    <div className="w-24 h-24 rounded-full bg-[#0a0a0a] border border-gray-800 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-[#151515] shadow-inner" />
+                    </div>
+                    
+                    {/* Hover Text */}
+                    <div className="absolute inset-0 flex items-center justify-center transition-opacity opacity-100">
+                      <span className="text-white text-xs font-medium tracking-wider animate-pulse">UPLOAD</span>
+                    </div>
+                </div>
+              </div>
+
+              {/* SHUTTER BUTTON (Decor only now) */}
+              <div
+                className={`
+                  absolute right-2 bottom-0 translate-y-1/2
+                  w-16 h-16 rounded-full bg-[#ff3b30] border-[6px] border-white shadow-lg
+                  flex items-center justify-center
+                  z-20 opacity-90
+                `}
+              >
+                  <div className="w-full h-full rounded-full bg-gradient-to-br from-transparent to-black/10" />
+              </div>
+            </div>
+
+          {/* Bottom Slot - Increased Z-index to cover photo during ejection */}
+          <div className="w-[290px] h-4 bg-[#1a1a1a] rounded-lg mt-12 shadow-inner relative z-30 border-b border-zinc-700" />
+
         </div>
 
-        {/* Caption Area */}
-        <div className="space-y-6 flex flex-col items-center">
-          <div className="relative w-80">
-            <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder={selectedImage ? "Write a caption..." : "Write a message..."}
-              maxLength={selectedImage ? 60 : 100} 
-              className="w-full bg-zinc-900 text-white rounded-xl p-3 pr-12 focus:ring-2 focus:ring-white/50 border border-transparent focus:border-zinc-700 outline-none resize-none h-20 font-marker text-xl placeholder:text-zinc-600 transition-all"
-            />
-            <div className="absolute bottom-2 right-3 text-xs text-zinc-600">
-              {caption.length}/{selectedImage ? 60 : 100}
+          {/* POLAROID PHOTO (Preview) */}
+          <div className={`
+            absolute top-0 left-0 w-full flex flex-col items-center pointer-events-none
+            transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]
+            ${stage === 'idle' ? 'translate-y-12 opacity-0 z-10 scale-95' : ''}
+            ${stage === 'ejecting' ? 'translate-y-[350px] opacity-100 z-20 scale-100' : ''}
+            ${stage === 'spotlight' ? '-translate-y-24 z-50 scale-90 pointer-events-auto' : ''}
+          `}>
+            {/* Polaroid Card */}
+            <div className="bg-white w-[280px] p-3 pb-12 shadow-2xl rotate-[-2deg] hover:rotate-0 transition-transform duration-300">
+            {/* Photo Area */}
+            <div className="w-full mb-4 bg-zinc-100 border border-gray-200 flex flex-col items-center justify-center relative overflow-hidden group">
+              {selectedImage && (
+                <>
+                  <img src={selectedImage} alt="Preview" className="w-full h-auto block" />
+                  <button 
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </>
+              )}
+            </div>
+
+              {/* Caption Line */}
+              <textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder="Write a note..."
+                disabled={stage !== 'spotlight'}
+                autoFocus={stage === 'spotlight'}
+                className="w-full bg-transparent border-none focus:ring-0 outline-none text-gray-800 font-marker text-3xl text-center resize-none h-20 leading-tight placeholder:text-gray-300"
+                maxLength={60}
+              />
+            </div>
+
+            {/* Submit Button - Only visible in spotlight */}
+            <div className={`
+                mt-8 transition-all duration-500 delay-300
+                ${stage === 'spotlight' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}
+            `}>
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white px-8 py-3 rounded-full font-bold text-lg shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                  {isUploading ? 'Posting...' : 'Post to Wall'}
+              </button>
             </div>
           </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className={`
-              w-48 bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white rounded-xl py-3 font-bold shadow-lg shadow-red-900/20
-              disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all hover:shadow-red-500/20 transform hover:-translate-y-1
-            `}
-          >
-            {isUploading ? 'Posting...' : 'Post to Wall'}
-          </button>
+          
         </div>
-      </main>
+      
+      </div>
+
+      {/* Hidden Input */}
+      <input 
+        type="file" 
+        accept="image/*" 
+        ref={fileInputRef} 
+        onChange={handleFileSelect} 
+        className="hidden" 
+      />
     </div>
   );
 };

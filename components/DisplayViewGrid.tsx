@@ -19,7 +19,18 @@ const MarqueeColumn: React.FC<{
   const yPos = useRef(0);
   const reqId = useRef<number>();
   const lastHeight = useRef(0);
-  // Pause state removed as per request
+
+  // Calculate repeat count to ensure vertical fill
+  const repeatCount = useMemo(() => {
+    if (photos.length === 0) return 2;
+    const MIN_ITEMS = 12;
+    return Math.max(2, Math.ceil(MIN_ITEMS / photos.length));
+  }, [photos.length]);
+
+  const repeatCountRef = useRef(repeatCount);
+  useEffect(() => {
+    repeatCountRef.current = repeatCount;
+  }, [repeatCount]);
   
   // Initialize lastHeight on mount/update if available
   useLayoutEffect(() => {
@@ -47,16 +58,14 @@ const MarqueeColumn: React.FC<{
       yPos.current -= speed;
         
       // Loop logic
-        // We use the cached height to determine loop point.
-        // The content is rendered twice. So we loop when we pass half height.
-        const halfHeight = lastHeight.current / 2; 
-        
-        if (halfHeight > 0 && yPos.current <= -halfHeight) {
-           // Reset to top (well, strictly speaking, we add halfHeight to go back to the first set)
-           yPos.current += halfHeight;
-        }
-        
-        containerRef.current.style.transform = `translateY(${yPos.current}px)`;
+      const currentRepeat = repeatCountRef.current;
+      const singleSetHeight = lastHeight.current / currentRepeat; 
+      
+      if (singleSetHeight > 0 && yPos.current <= -singleSetHeight) {
+         yPos.current += singleSetHeight;
+      }
+      
+      containerRef.current.style.transform = `translateY(${yPos.current}px)`;
       
       reqId.current = requestAnimationFrame(move);
     };
@@ -77,21 +86,17 @@ const MarqueeColumn: React.FC<{
          
          const newHeight = containerRef.current.scrollHeight;
          const oldHeight = lastHeight.current;
+         const currentRepeat = repeatCountRef.current;
          
-         // Check if height changed significantly (avoid minor subpixel noise)
+         // Check if height changed significantly
          if (oldHeight > 0 && Math.abs(newHeight - oldHeight) > 1) {
-             const oldHalf = oldHeight / 2;
-             const newHalf = newHeight / 2;
+             const oldSingle = oldHeight / currentRepeat;
+             const newSingle = newHeight / currentRepeat;
              
-             // If we are visually in the "second half" (the duplicate set),
-             // we need to adjust yPos so we stay visually consistent.
-             // The logic: The first set grew, pushing the second set down.
-             // We need to move our viewport DOWN (more negative yPos) by the growth amount
-             // to keep seeing the same item in the second set.
-             
-             if (Math.abs(yPos.current) >= oldHalf) {
-                 const delta = newHalf - oldHalf;
-                 yPos.current -= delta;
+             // Adjust position to maintain visual consistency
+             if (oldSingle > 0) {
+                const ratio = newSingle / oldSingle;
+                yPos.current = yPos.current * ratio;
              }
          }
          
@@ -107,31 +112,19 @@ const MarqueeColumn: React.FC<{
       className="w-full absolute top-0"
     >
       <div ref={containerRef} className="w-full flex flex-col">
-        {/* First Set */}
-        {photos.map((photo, index) => (
-          <div 
-            key={`1-${photo.id}-${index}`} 
-            className="w-full flex justify-center mb-12"
-          >
-              <Polaroid 
-                photo={photo} 
-                size="small"
-                className="w-full max-w-[180px] hover:z-10 transition-transform hover:scale-105 hover:rotate-0 shadow-lg"
-              />
-          </div>
-        ))}
-        {/* Duplicate Set for Infinite Loop */}
-        {photos.map((photo, index) => (
-          <div 
-            key={`2-${photo.id}-${index}`} 
-            className="w-full flex justify-center mb-12"
-          >
-              <Polaroid 
-                photo={photo} 
-                size="small"
-                className="w-full max-w-[180px] hover:z-10 transition-transform hover:scale-105 hover:rotate-0 shadow-lg"
-              />
-          </div>
+        {Array.from({ length: repeatCount }).map((_, setIndex) => (
+           photos.map((photo, index) => (
+            <div 
+              key={`${setIndex}-${photo.id}-${index}`} 
+              className="w-full flex justify-center mb-12"
+            >
+                <Polaroid 
+                  photo={photo} 
+                  size="small"
+                  className="w-full max-w-[180px] hover:z-10 transition-transform hover:scale-105 hover:rotate-0 shadow-lg"
+                />
+            </div>
+          ))
         ))}
       </div>
     </div>

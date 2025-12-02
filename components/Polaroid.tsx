@@ -14,10 +14,10 @@ export const Polaroid: React.FC<PolaroidProps> = ({
   style = {},
   size = 'normal'
 }) => {
-  // Check if we have an image
-  const currentImage = photo.images && photo.images.length > 0 
-    ? photo.images[0] 
-    : '';
+  // Prefer server-served image URL; fall back to any inline base64
+  const currentImage = photo.imageUrl
+    ? photo.imageUrl
+    : (photo.images && photo.images.length > 0 ? photo.images[0] : '');
 
   // Size-based classes
   const containerPadding = size === 'small' ? 'p-2 pb-6' : 'p-3 pb-12';

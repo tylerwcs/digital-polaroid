@@ -46,6 +46,11 @@ const UploadView: React.FC = () => {
     setCaption('');
   };
 
+  const handleTextOnly = () => {
+    setSelectedImage(null);
+    setStage('spotlight');
+  };
+
   const handleSubmit = async () => {
     // Require either an image OR a caption
     if (!selectedImage && !caption.trim()) {
@@ -118,42 +123,40 @@ const UploadView: React.FC = () => {
         
         {/* INTRO TEXT - Fades out when not idle */}
         <div className={`
-           text-center mb-24 transition-all duration-700
+           text-center mb-10 transition-all duration-700
            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
         `}>
            <h2 className="text-4xl font-marker text-white mb-2 tracking-wider transform -rotate-2">
              Share the Moments!
            </h2>
            <p className="text-zinc-400 text-sm max-w-xs mx-auto leading-relaxed">
-             Upload all the photos taken today to the digital wall for everyone to see!
+             Send a message or upload photos to the digital wall for everyone to see!
            </p>
         </div>
+
+        {/* Text Only Option */}
+        <button
+          onClick={handleTextOnly}
+          className={`
+            mb-12 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full 
+            text-white/80 hover:text-white font-marker text-xl tracking-wide 
+            transition-all duration-500 hover:scale-105 hover:shadow-lg hover:border-white/30
+            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
+          `}
+        >
+          ✎ Write a Note
+        </button>
 
         {/* Camera & Photo Wrapper to keep them anchored together */}
         <div className="relative w-[320px] flex flex-col items-center">
 
           {/* GUIDANCE HINT - Only visible in idle */}
           <div className={`
-            absolute -top-20 right-4 z-40 flex flex-col items-center
+            absolute -top-14 -right-4 z-40 flex flex-col items-center
             transition-all duration-700 delay-300
-            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}
+            ${stage === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-0 pointer-events-none'}
           `}>
-            <p className="font-marker text-2xl text-white -rotate-6 mb-[-10px] mr-0">
-              Tap lens to snap!
-            </p>
-            <svg 
-              className="w-16 h-16 text-white transform rotate-12 drop-shadow-md" 
-              viewBox="0 0 100 100" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="3" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            >
-              {/* Hand-drawn style arrow pointing down-left towards the lens */}
-              <path d="M80,10 C60,40 90,60 40,80" />
-              <path d="M45,70 L40,80 L55,85" />
-            </svg>
+            {/* Removed Floating Hint */}
           </div>
 
           {/* CAMERA BODY */}
@@ -197,26 +200,29 @@ const UploadView: React.FC = () => {
             {/* LENS ASSEMBLY (Trigger) */}
             <div 
               onClick={triggerCamera}
-              className="relative w-40 h-40 rounded-full bg-[#1a1a1a] border-[6px] border-[#2a2a2a] flex items-center justify-center cursor-pointer shadow-xl z-10 group active:scale-95 transition-transform animate-pulse-subtle"
+              className="relative w-40 h-40 rounded-full bg-[#1a1a1a] border-[6px] border-[#2a2a2a] flex items-center justify-center cursor-pointer shadow-xl z-10 group active:scale-95 transition-transform"
             >
+                {/* Outer Ring Animation */}
+                <div className="absolute inset-0 rounded-full border-2 border-white/20 animate-ping opacity-20" />
+
                 {/* Lens Details */}
                 <div className="w-32 h-32 rounded-full bg-black border border-gray-800 flex items-center justify-center relative overflow-hidden">
                     {/* Reflections */}
-                    <div className="absolute top-6 right-6 w-8 h-4 bg-white/10 rounded-full rotate-45 blur-md" />
-                    <div className="absolute bottom-8 left-8 w-4 h-2 bg-white/5 rounded-full rotate-45 blur-sm" />
+                    <div className="absolute top-6 right-6 w-8 h-4 bg-white/10 rounded-full rotate-45 blur-md opacity-50" />
+                    <div className="absolute bottom-8 left-8 w-4 h-2 bg-white/5 rounded-full rotate-45 blur-sm opacity-50" />
                     
-                    <div className="w-24 h-24 rounded-full bg-[#0a0a0a] border border-gray-800 flex items-center justify-center">
+                    <div className="w-24 h-24 rounded-full bg-[#0a0a0a] border border-gray-800 flex items-center justify-center opacity-80">
                       <div className="w-10 h-10 rounded-full bg-[#151515] shadow-inner" />
                     </div>
                     
-                    {/* Hover Text */}
-                    <div className="absolute inset-0 flex items-center justify-center transition-opacity opacity-100">
-                      <span className="text-white text-xs font-medium tracking-wider animate-pulse">UPLOAD</span>
+                    {/* Overlay Text & Icon */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+                      <span className="text-white text-[10px] font-bold tracking-widest animate-[pulse_0.8s_ease-in-out_infinite]">TAP TO SNAP</span>
                     </div>
                 </div>
               </div>
 
-              {/* SHUTTER BUTTON (Decor only now) */}
+              {/* SHUTTER BUTTON */}
               <div
                 className={`
                   absolute right-2 bottom-0 translate-y-1/2
@@ -245,6 +251,7 @@ const UploadView: React.FC = () => {
             {/* Polaroid Card */}
             <div className="bg-white w-[280px] p-3 pb-12 shadow-2xl rotate-[-2deg] hover:rotate-0 transition-transform duration-300">
             {/* Photo Area */}
+            {selectedImage ? (
             <div className="w-full mb-4 bg-zinc-100 border border-gray-200 flex flex-col items-center justify-center relative overflow-hidden group">
               {selectedImage && (
                 <>
@@ -258,6 +265,10 @@ const UploadView: React.FC = () => {
                 </>
               )}
             </div>
+            ) : (
+               // Spacer or specific styling for text-only mode
+               <div className="h-8" /> 
+            )}
 
               {/* Caption Line */}
               <textarea
@@ -273,9 +284,16 @@ const UploadView: React.FC = () => {
 
             {/* Submit Button - Only visible in spotlight */}
             <div className={`
-                mt-8 transition-all duration-500 delay-300
+                mt-8 flex gap-4 transition-all duration-500 delay-300
                 ${stage === 'spotlight' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}
             `}>
+              <button
+                onClick={removeImage}
+                disabled={isUploading}
+                className="px-6 py-3 rounded-full font-bold text-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}

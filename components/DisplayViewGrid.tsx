@@ -201,13 +201,24 @@ const DisplayViewGrid: React.FC = () => {
   }, [photos, numCols]);
 
   return (
-    <div className="h-screen bg-green-500 text-white overflow-hidden relative flex flex-col">
+    <div className="h-screen bg-black text-white overflow-hidden relative flex flex-col">
       
       {/* Background Wrapper */}
       <div className="flex-grow flex flex-col relative">
-        
-        {/* Background Video - Removed for Chroma Key */}
-        
+        <video
+          className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          aria-hidden
+        >
+          <source
+            src="/dynamic-orange-and-yellow-swirling-gradient-backgr-2026-01-28-05-20-19-utc.mp4"
+            type="video/mp4"
+          />
+        </video>
+
         <main 
           ref={containerRef}
           className="flex-grow relative z-10 overflow-hidden pt-4"

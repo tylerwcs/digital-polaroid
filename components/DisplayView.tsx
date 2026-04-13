@@ -276,11 +276,24 @@ const DisplayView: React.FC = () => {
   const isSpotlightActive = spotlightState !== 'idle';
 
   return (
-    <div className="h-screen bg-green-500 text-white overflow-hidden relative flex flex-col">
+    <div className="h-screen bg-black text-white overflow-hidden relative flex flex-col">
       
       {/* Background Wrapper - Blurs when spotlight is active */}
       <div className={`flex-grow flex flex-col relative transition-all duration-1000 ease-in-out ${isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''}`}>
-        
+        <video
+          className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          aria-hidden
+        >
+          <source
+            src="/dynamic-orange-and-yellow-swirling-gradient-backgr-2026-01-28-05-20-19-utc.mp4"
+            type="video/mp4"
+          />
+        </video>
+
         {/* Logo & QR Code Container */}
         <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
           {/* QR Code */}

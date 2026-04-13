@@ -15,6 +15,8 @@ dist-ssr
 # Media
 public/*.mov
 public/*.mp4
+# Wall background (referenced by DisplayView) — allow this one despite public/*.mp4 above
+!public/dynamic-orange-and-yellow-swirling-gradient-backgr-2026-01-28-05-20-19-utc.mp4
 
 # Editor directories and files
 .vscode/*

@@ -23,6 +23,12 @@ const UPLOAD_URL_BASE = UPLOAD_URL_PREFIX !== '/' && UPLOAD_URL_PREFIX.endsWith(
   ? UPLOAD_URL_PREFIX.slice(0, -1)
   : UPLOAD_URL_PREFIX;
 
+// Public origin for absolute image URLs (needed when the frontend is hosted separately,
+// e.g. Render static site + API — otherwise browsers resolve /uploads/... against the static host).
+const rawPublicBase =
+  process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || '';
+const PUBLIC_BASE_URL = rawPublicBase.replace(/\/+$/, '');
+
 const MAX_IMAGE_BYTES = Math.floor(MAX_IMAGE_MB * 1024 * 1024);
 const JSON_BODY_LIMIT = `${JSON_BODY_LIMIT_MB}mb`;
 
@@ -81,7 +87,13 @@ const decodeBase64Image = (dataUri = '') => {
 };
 
 const fullImagePath = (fileName) => path.join(UPLOAD_DIR, fileName);
-const buildImageUrl = (fileName) => path.posix.join(UPLOAD_URL_BASE, fileName);
+const buildImageUrl = (fileName) => {
+  const relative = path.posix.join(UPLOAD_URL_BASE, fileName);
+  if (PUBLIC_BASE_URL) {
+    return `${PUBLIC_BASE_URL}${relative}`;
+  }
+  return relative;
+};
 
 const deleteFileIfExists = async (fileName) => {
   if (!fileName) return;

@@ -22,12 +22,35 @@ const MAX_CLIENT_FILE_BYTES = parseNumberEnv(import.meta.env.VITE_MAX_UPLOAD_BYT
 const MAX_CLIENT_FILE_MB = Math.round((MAX_CLIENT_FILE_BYTES / (1024 * 1024)) * 10) / 10;
 
 const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
-  if (!photo?.imageUrl || /^https?:\/\//i.test(photo.imageUrl)) {
+  if (!photo?.imageUrl || photo.imageUrl.startsWith('data:')) {
     return photo;
   }
+
+  const apiBase = API_URL.replace(/\/+$/, '');
+
+  const upgradeToHttpsIfNeeded = (url: string) => {
+    if (typeof window === 'undefined') return url;
+    if (window.location.protocol !== 'https:') return url;
+    if (url.startsWith('http://')) {
+      return `https://${url.slice('http://'.length)}`;
+    }
+    return url;
+  };
+
   try {
-    const absolute = new URL(photo.imageUrl, API_URL).toString();
-    return { ...photo, imageUrl: absolute };
+    let imageUrl = photo.imageUrl.trim();
+
+    if (/^https?:\/\//i.test(imageUrl)) {
+      const parsed = new URL(imageUrl);
+      const apiOrigin = new URL(apiBase).origin;
+      if (parsed.origin !== apiOrigin) {
+        imageUrl = `${apiOrigin}${parsed.pathname}${parsed.search}`;
+      }
+      return { ...photo, imageUrl: upgradeToHttpsIfNeeded(imageUrl) };
+    }
+
+    const absolute = new URL(imageUrl, apiBase).toString();
+    return { ...photo, imageUrl: upgradeToHttpsIfNeeded(absolute) };
   } catch {
     return photo;
   }

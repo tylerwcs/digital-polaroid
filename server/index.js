@@ -60,6 +60,7 @@ const sanitizePhoto = (photo) => ({
   rotation: photo.rotation,
   author: photo.author,
   imageUrl: photo.imageUrl,
+  signature: photo.signature,
   images: [],
 });
 
@@ -126,6 +127,7 @@ const normalizePhotoRecord = async (entry) => {
     timestamp: typeof entry.timestamp === 'number' ? entry.timestamp : Date.now(),
     rotation: typeof entry.rotation === 'number' ? entry.rotation : 0,
     author: entry.author,
+    signature: entry.signature,
     imageUrl: storageFile ? buildImageUrl(storageFile) : undefined,
     storageFile,
   };
@@ -277,6 +279,7 @@ app.post('/api/photos', async (req, res) => {
       timestamp: typeof incomingPhoto.timestamp === 'number' ? incomingPhoto.timestamp : Date.now(),
       rotation: typeof incomingPhoto.rotation === 'number' ? incomingPhoto.rotation : (Math.random() * 6 - 3),
       author: incomingPhoto.author,
+      signature: incomingPhoto.signature,
       imageUrl: storageFileName ? buildImageUrl(storageFileName) : undefined,
       storageFile: storageFileName,
     };

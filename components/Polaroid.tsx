@@ -38,12 +38,21 @@ export const Polaroid: React.FC<PolaroidProps> = ({
         Only render if an image exists.
       */}
       {currentImage && (
-        <div className="w-full mb-4 bg-gray-100 border border-gray-200">
+        <div className="w-full mb-4 bg-gray-100 border border-gray-200 relative">
           <img 
             src={currentImage} 
             alt={photo.caption} 
             className="w-full h-auto block"
           />
+          {/* Signature Area Over Photo */}
+          {photo.signature && (
+            <img 
+              src={photo.signature} 
+              alt="Signature" 
+              className="absolute inset-0 w-full h-full object-contain opacity-90 pointer-events-none"
+              style={{ filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.4))' }}
+            />
+          )}
         </div>
       )}
       

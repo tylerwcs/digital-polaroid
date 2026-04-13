@@ -6,6 +6,7 @@ export interface PhotoEntry {
   caption: string;
   timestamp: number;
   author?: string;
+  signature?: string; // Optional base64 signature
   rotation: number; // Random rotation for visual interest
 }
 

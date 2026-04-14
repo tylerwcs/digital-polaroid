@@ -289,7 +289,7 @@ const DisplayView: React.FC = () => {
           aria-hidden
         >
           <source
-            src="/dynamic-orange-and-yellow-swirling-gradient-backgr-2026-01-28-05-20-19-utc.mp4"
+            src="/BG.mp4"
             type="video/mp4"
           />
         </video>

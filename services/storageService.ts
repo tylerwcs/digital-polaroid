@@ -21,6 +21,12 @@ const socket = io(API_URL);
 const MAX_CLIENT_FILE_BYTES = parseNumberEnv(import.meta.env.VITE_MAX_UPLOAD_BYTES, 4 * 1024 * 1024);
 const MAX_CLIENT_FILE_MB = Math.round((MAX_CLIENT_FILE_BYTES / (1024 * 1024)) * 10) / 10;
 
+const isLoopbackHost = (hostname: string) =>
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1' ||
+  hostname === '[::1]' ||
+  hostname.endsWith('.localhost');
+
 const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
   if (!photo?.imageUrl || photo.imageUrl.startsWith('data:')) {
     return photo;
@@ -42,8 +48,11 @@ const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
 
     if (/^https?:\/\//i.test(imageUrl)) {
       const parsed = new URL(imageUrl);
-      const apiOrigin = new URL(apiBase).origin;
-      if (parsed.origin !== apiOrigin) {
+      // Only rewrite loopback URLs (e.g. bad data from dev). Do not force every absolute
+      // URL onto VITE_API_URL — that breaks production when the API host differs from the
+      // static site (Render) and would replace a correct API URL with the wrong origin.
+      if (isLoopbackHost(parsed.hostname)) {
+        const apiOrigin = new URL(apiBase).origin;
         imageUrl = `${apiOrigin}${parsed.pathname}${parsed.search}`;
       }
       return { ...photo, imageUrl: upgradeToHttpsIfNeeded(imageUrl) };

@@ -1,7 +1,7 @@
 {
   "name": "snapwall-server",
   "version": "1.0.0",
-  "description": "Backend for SnapWall",
+  "description": "Backend for Digital Polaroid",
   "main": "index.js",
   "type": "module",
   "scripts": {

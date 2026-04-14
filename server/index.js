@@ -16,7 +16,16 @@ const MAX_IMAGE_MB = parseFloat(process.env.MAX_IMAGE_MB || '3');
 const JSON_BODY_LIMIT_MB = parseFloat(process.env.JSON_BODY_LIMIT_MB || '5');
 const SAVE_DEBOUNCE_MS = parseInt(process.env.SAVE_DEBOUNCE_MS || '1000', 10);
 const ENABLE_DISK_CACHE = (process.env.ENABLE_DISK_CACHE || 'false').toLowerCase() === 'true';
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+
+// Always anchor uploads to this app directory. A relative UPLOAD_DIR env (common on hosts)
+// would otherwise resolve against process.cwd(), which often is not .../server on Render.
+const resolveUploadDir = () => {
+  const fromEnv = process.env.UPLOAD_DIR;
+  if (!fromEnv) return path.resolve(__dirname, 'uploads');
+  if (path.isAbsolute(fromEnv)) return path.normalize(fromEnv);
+  return path.resolve(__dirname, fromEnv);
+};
+const UPLOAD_DIR = resolveUploadDir();
 const rawUploadPrefix = process.env.UPLOAD_URL_PREFIX || '/uploads';
 const UPLOAD_URL_PREFIX = rawUploadPrefix.startsWith('/') ? rawUploadPrefix : `/${rawUploadPrefix}`;
 const UPLOAD_URL_BASE = UPLOAD_URL_PREFIX !== '/' && UPLOAD_URL_PREFIX.endsWith('/')
@@ -52,6 +61,15 @@ app.use(UPLOAD_URL_BASE, express.static(UPLOAD_DIR, {
     res.setHeader('Cache-Control', 'public, max-age=300, immutable');
   }
 }));
+
+// Fallback if express.static does not resolve (some host cwd/layout edge cases)
+app.get(`${UPLOAD_URL_BASE}/:fileName`, (req, res, next) => {
+  const safe = path.basename(req.params.fileName || '');
+  if (!safe || safe !== req.params.fileName) return next();
+  res.sendFile(path.join(UPLOAD_DIR, safe), (err) => {
+    if (err) next(err);
+  });
+});
 
 // In-memory cache
 let photos = [];
@@ -352,4 +370,5 @@ await ensureUploadDir();
 await loadPhotos();
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
+  console.log(`[snapwall] Static uploads: ${UPLOAD_URL_BASE} -> ${UPLOAD_DIR}`);
 });

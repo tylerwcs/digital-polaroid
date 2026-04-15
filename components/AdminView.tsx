@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete } from '../services/storageService';
+import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos } from '../services/storageService';
 import { PhotoEntry } from '../types';
 import { useToast } from '../context/ToastContext';
 
@@ -7,6 +7,7 @@ const AdminView: React.FC = () => {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
   const { showToast } = useToast();
 
   // Simple hardcoded password for demo purposes
@@ -58,6 +59,16 @@ const AdminView: React.FC = () => {
     }
   };
 
+  const handleDownloadAll = async () => {
+    setIsDownloading(true);
+    const result = await downloadAllPhotos();
+    setIsDownloading(false);
+
+    if (!result.success) {
+      showToast(result.error || 'Failed to download photos', 'error');
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
@@ -85,7 +96,17 @@ const AdminView: React.FC = () => {
     <div className="min-h-screen bg-zinc-950 text-white p-6">
       <header className="mb-8 flex justify-between items-center max-w-6xl mx-auto">
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <div className="text-zinc-400 text-sm">{photos.length} submissions</div>
+        <div className="flex items-center gap-4">
+          <div className="text-zinc-400 text-sm">{photos.length} submissions</div>
+          <button
+            type="button"
+            onClick={handleDownloadAll}
+            disabled={photos.length === 0 || isDownloading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-400 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            {isDownloading ? 'Preparing ZIP...' : 'Download All Photos'}
+          </button>
+        </div>
       </header>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">

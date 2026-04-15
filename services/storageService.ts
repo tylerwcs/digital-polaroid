@@ -133,6 +133,43 @@ export const deletePhoto = async (id: string): Promise<boolean> => {
   }
 };
 
+export const downloadAllPhotos = async (): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const response = await fetch(`${API_URL}/api/photos/download-all`);
+    if (!response.ok) {
+      let message = 'Failed to download photos';
+      try {
+        const payload = await response.json();
+        if (payload?.error) {
+          message = payload.error;
+        }
+      } catch {
+        // Ignore JSON parse failures for non-JSON error bodies
+      }
+      return { success: false, error: message };
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const contentDisposition = response.headers.get('content-disposition') || '';
+    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+    const filename = filenameMatch?.[1] || `digital-polaroid-photos-${Date.now()}.zip`;
+
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error downloading all photos', error);
+    return { success: false, error: 'Unable to reach server' };
+  }
+};
+
 export const subscribeToUpdates = (callback: (photo: PhotoEntry) => void) => {
   const handler = (photo: PhotoEntry) => {
     callback(toAbsoluteImageUrl(photo));

@@ -6,6 +6,7 @@ import cors from 'cors';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import archiver from 'archiver';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -355,6 +356,39 @@ app.delete('/api/photos/:id', async (req, res) => {
     console.error('Delete error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+app.get('/api/photos/download-all', async (req, res) => {
+  const downloadablePhotos = photos.filter((photo) => photo.storageFile);
+  if (downloadablePhotos.length === 0) {
+    return res.status(404).json({ error: 'No uploaded photos to download' });
+  }
+
+  const zipName = `digital-polaroid-photos-${Date.now()}.zip`;
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+
+  const archive = archiver('zip', { zlib: { level: 9 } });
+
+  archive.on('error', (error) => {
+    console.error('Zip archive error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to build download archive' });
+      return;
+    }
+    res.end();
+  });
+
+  archive.pipe(res);
+
+  for (const photo of downloadablePhotos) {
+    const safeId = String(photo.id || 'photo').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const extension = path.extname(photo.storageFile) || '.jpg';
+    const fileName = `${photo.timestamp || Date.now()}-${safeId}${extension}`;
+    archive.file(fullImagePath(photo.storageFile), { name: fileName });
+  }
+
+  await archive.finalize();
 });
 
 // Socket.IO connection

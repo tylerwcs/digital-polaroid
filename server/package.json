@@ -9,6 +9,8 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "@fontsource/caveat": "^5.2.5",
+    "@napi-rs/canvas": "^0.1.80",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

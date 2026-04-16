@@ -7,6 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
+import { renderPolaroidPng, canExportPolaroid } from './polaroidExport.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -359,7 +360,7 @@ app.delete('/api/photos/:id', async (req, res) => {
 });
 
 app.get('/api/photos/download-all', async (req, res) => {
-  const downloadablePhotos = photos.filter((photo) => photo.storageFile);
+  const downloadablePhotos = photos.filter(canExportPolaroid);
   if (downloadablePhotos.length === 0) {
     return res.status(404).json({ error: 'No uploaded photos to download' });
   }
@@ -381,11 +382,25 @@ app.get('/api/photos/download-all', async (req, res) => {
 
   archive.pipe(res);
 
+  const polaroidDeps = {
+    __dirname,
+    fullImagePath,
+    decodeBase64Image,
+  };
+
   for (const photo of downloadablePhotos) {
     const safeId = String(photo.id || 'photo').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const extension = path.extname(photo.storageFile) || '.jpg';
-    const fileName = `${photo.timestamp || Date.now()}-${safeId}${extension}`;
-    archive.file(fullImagePath(photo.storageFile), { name: fileName });
+    const baseName = `${photo.timestamp || Date.now()}-${safeId}`;
+    try {
+      const png = await renderPolaroidPng(photo, polaroidDeps);
+      archive.append(png, { name: `${baseName}-polaroid.png` });
+    } catch (error) {
+      console.error(`Polaroid render failed for ${photo.id}, falling back to raw file:`, error);
+      if (photo.storageFile) {
+        const extension = path.extname(photo.storageFile) || '.jpg';
+        archive.file(fullImagePath(photo.storageFile), { name: `${baseName}${extension}` });
+      }
+    }
   }
 
   await archive.finalize();

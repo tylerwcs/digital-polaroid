@@ -298,15 +298,17 @@ const DisplayView: React.FC = () => {
         <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
           {/* QR Code */}
           {uploadUrl && (
-            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-white/20 transition-transform hover:scale-105">
-              <QRCodeSVG 
-                value={uploadUrl} 
-                size={100}
-                level="M"
-                bgColor="transparent"
-                fgColor="#ffffff"
-              />
-              <p className="text-center text-xs font-medium mt-2 text-white/90 drop-shadow-md">Scan to Upload</p>
+            <div className="bg-black/90 p-3 rounded-xl shadow-2xl border border-white/30 transition-transform hover:scale-105">
+              <div className="bg-white p-2 rounded-md">
+                <QRCodeSVG 
+                  value={uploadUrl} 
+                  size={100}
+                  level="H"
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                />
+              </div>
+              <p className="text-center text-xs font-semibold mt-2 text-white">Scan to Upload</p>
             </div>
           )}
 

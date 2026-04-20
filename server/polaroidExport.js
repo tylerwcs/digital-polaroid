@@ -12,15 +12,20 @@ const FRAME_BG = '#f3f4f6';
 const FRAME_BORDER = '#e5e7eb';
 const CAPTION_COLOR = '#1f2937';
 const FONT_FAMILY = 'Caveat';
+const EMOJI_FONT_FAMILY = 'Noto Color Emoji';
 const FONT_SIZE_HAS_IMAGE = 60; // ~ text-3xl * 2
 const FONT_SIZE_TEXT_ONLY = 72; // ~ text-4xl * 2
 const CAPTION_ONLY_INNER_PY = 64; // py-8 * 2
 
-let fontRegistered = false;
+/** Caveat for marker text + Noto Color Emoji so captions match the browser (emoji fallback). */
+const captionFont = (sizePx) =>
+  `700 ${sizePx}px ${FONT_FAMILY}, "${EMOJI_FONT_FAMILY}"`;
 
-async function ensureMarkerFont(serverDir) {
-  if (fontRegistered) return;
-  const fontPath = path.join(
+let captionFontsRegistered = false;
+
+async function ensureCaptionFonts(serverDir) {
+  if (captionFontsRegistered) return;
+  const caveatPath = path.join(
     serverDir,
     'node_modules',
     '@fontsource',
@@ -28,18 +33,35 @@ async function ensureMarkerFont(serverDir) {
     'files',
     'caveat-latin-700-normal.woff2'
   );
+  const emojiPath = path.join(
+    serverDir,
+    'node_modules',
+    '@fontsource',
+    'noto-color-emoji',
+    'files',
+    'noto-color-emoji-emoji-400-normal.woff2'
+  );
   try {
-    await fs.access(fontPath);
+    await fs.access(caveatPath);
   } catch {
     throw new Error(
       'Caveat font not found. Run npm install in the server directory (needs @fontsource/caveat).'
     );
   }
-  const key = GlobalFonts.registerFromPath(fontPath, FONT_FAMILY);
-  if (!key) {
-    throw new Error(`Failed to register Caveat from ${fontPath}`);
+  try {
+    await fs.access(emojiPath);
+  } catch {
+    throw new Error(
+      'Emoji font not found. Run npm install in the server directory (needs @fontsource/noto-color-emoji).'
+    );
   }
-  fontRegistered = true;
+  if (!GlobalFonts.registerFromPath(caveatPath, FONT_FAMILY)) {
+    throw new Error(`Failed to register Caveat from ${caveatPath}`);
+  }
+  if (!GlobalFonts.registerFromPath(emojiPath, EMOJI_FONT_FAMILY)) {
+    throw new Error(`Failed to register Noto Color Emoji from ${emojiPath}`);
+  }
+  captionFontsRegistered = true;
 }
 
 function wrapLines(ctx, text, maxWidth) {
@@ -122,7 +144,7 @@ function drawRotatedCard(sourceCanvas, rotationDeg) {
  */
 export async function renderPolaroidPng(photo, deps) {
   const { __dirname: serverDir, fullImagePath, decodeBase64Image } = deps;
-  await ensureMarkerFont(serverDir);
+  await ensureCaptionFonts(serverDir);
 
   const innerW = POLAROID_OUTER_W - PAD_X * 2;
   const hasFile = Boolean(photo.storageFile);
@@ -163,7 +185,7 @@ export async function renderPolaroidPng(photo, deps) {
 
   if (photoImg) {
     frameH = Math.max(1, Math.round(innerW * (photoImg.height / photoImg.width)));
-    measureCtx.font = `700 ${FONT_SIZE_HAS_IMAGE}px ${FONT_FAMILY}`;
+    measureCtx.font = captionFont(FONT_SIZE_HAS_IMAGE);
     const lineHeight = Math.round(FONT_SIZE_HAS_IMAGE * 1.15);
     const { height: captionH } = measureCaptionBlock(
       measureCtx,
@@ -173,7 +195,7 @@ export async function renderPolaroidPng(photo, deps) {
     );
     canvasH = PAD_TOP + frameH + GAP_IMG_CAPTION + captionH + PAD_BOTTOM;
   } else {
-    measureCtx.font = `700 ${FONT_SIZE_TEXT_ONLY}px ${FONT_FAMILY}`;
+    measureCtx.font = captionFont(FONT_SIZE_TEXT_ONLY);
     const lineHeight = Math.round(FONT_SIZE_TEXT_ONLY * 1.15);
     const { height: captionH } = measureCaptionBlock(
       measureCtx,
@@ -202,7 +224,7 @@ export async function renderPolaroidPng(photo, deps) {
     if (sigImg) {
       drawSignatureContain(ctx, sigImg, frameX, frameY, innerW, frameH);
     }
-    ctx.font = `700 ${FONT_SIZE_HAS_IMAGE}px ${FONT_FAMILY}`;
+    ctx.font = captionFont(FONT_SIZE_HAS_IMAGE);
     ctx.fillStyle = CAPTION_COLOR;
     ctx.textBaseline = 'top';
     const lineHeight = Math.round(FONT_SIZE_HAS_IMAGE * 1.15);
@@ -215,7 +237,7 @@ export async function renderPolaroidPng(photo, deps) {
       cy += lineHeight;
     });
   } else {
-    ctx.font = `700 ${FONT_SIZE_TEXT_ONLY}px ${FONT_FAMILY}`;
+    ctx.font = captionFont(FONT_SIZE_TEXT_ONLY);
     ctx.fillStyle = CAPTION_COLOR;
     ctx.textBaseline = 'top';
     const lineHeight = Math.round(FONT_SIZE_TEXT_ONLY * 1.15);

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fontsource/caveat": "^5.2.5",
+    "@fontsource/noto-color-emoji": "^5.2.12",
     "@napi-rs/canvas": "^0.1.80",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",

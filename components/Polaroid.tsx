@@ -27,7 +27,7 @@ export const Polaroid: React.FC<PolaroidProps> = ({
 
   return (
     <div 
-      className={`bg-white ${containerPadding} shadow-xl text-black transform transition-transform hover:scale-105 duration-300 ${className}`}
+      className={`bg-white ${containerPadding} shadow-xl text-black transform transition-transform hover:scale-105 duration-300 relative ${className}`}
       style={{
         ...style,
         transform: `rotate(${photo.rotation}deg)`,
@@ -57,11 +57,18 @@ export const Polaroid: React.FC<PolaroidProps> = ({
       )}
       
       {/* Caption Area */}
-      <div 
+      <div
         className={`font-marker text-center leading-tight px-2 text-gray-800 break-words ${textSize}`}
       >
         {photo.caption}
       </div>
+
+      {/* Butterfly Logo */}
+      <img
+        src="/butterfly.png"
+        alt=""
+        className={`absolute bottom-1 left-1 pointer-events-none opacity-60 ${size === 'small' ? 'w-6 h-6' : 'w-10 h-10'}`}
+      />
     </div>
   );
 };

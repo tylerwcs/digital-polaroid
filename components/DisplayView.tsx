@@ -17,6 +17,7 @@ const DisplayView: React.FC = () => {
   // Spotlight state (used in next task)
   const [spotlightPhoto, setSpotlightPhoto] = useState<PhotoEntry | null>(null);
   const [spotlightState, setSpotlightState] = useState<SpotlightState>('idle');
+  const [spotlightReady, setSpotlightReady] = useState(false);
   const spotlightPhotoRef = useRef<PhotoEntry | null>(null);
   useEffect(() => { spotlightPhotoRef.current = spotlightPhoto; }, [spotlightPhoto]);
 
@@ -42,7 +43,7 @@ const DisplayView: React.FC = () => {
     const y = randomInRange(radius, h - radius);
     const vx = randomInRange(-0.2, 0.2);
     const vy = randomInRange(-0.2, 0.2);
-    physics.spawn({ photoId: photo.id, x, y, radius, vx, vy });
+    physicsRef.current.spawn({ photoId: photo.id, x, y, radius, vx, vy });
   };
 
   // Initial load
@@ -116,9 +117,21 @@ const DisplayView: React.FC = () => {
   // Spotlight state machine + handoff
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
+    let innerTimer: ReturnType<typeof setTimeout> | undefined;
 
     if (spotlightState === 'entering') {
+      // Give the browser one frame to paint the start-position before kicking the transition.
+      let raf1 = 0, raf2 = 0;
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setSpotlightReady(true));
+      });
       t = setTimeout(() => setSpotlightState('visible'), 1500);
+      return () => {
+        clearTimeout(t);
+        if (innerTimer) clearTimeout(innerTimer);
+        cancelAnimationFrame(raf1);
+        cancelAnimationFrame(raf2);
+      };
     } else if (spotlightState === 'visible') {
       t = setTimeout(() => {
         // Plan the handoff before transitioning to exiting:
@@ -134,7 +147,7 @@ const DisplayView: React.FC = () => {
             handoffRef.current = { x: oldest.x, y: oldest.y, radius: oldest.radius };
             physicsRef.current.markExiting(oldest.id);
             // Schedule physical removal after pop animation
-            setTimeout(() => physicsRef.current.remove(oldest.id), 600);
+            innerTimer = setTimeout(() => physicsRef.current.remove(oldest.id), 600);
           } else {
             handoffRef.current = { x: w / 2, y: h / 2, radius };
           }
@@ -158,10 +171,14 @@ const DisplayView: React.FC = () => {
         }
         handoffRef.current = null;
         setSpotlightPhoto(null);
+        setSpotlightReady(false);
         setSpotlightState('idle');
       }, 800);
     }
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      if (innerTimer) clearTimeout(innerTimer);
+    };
   }, [spotlightState]);
 
   const isSpotlightActive = spotlightState !== 'idle';
@@ -252,7 +269,9 @@ const DisplayView: React.FC = () => {
 
         const transform =
           spotlightState === 'entering'
-            ? `translateY(${window.innerHeight}px) scale(1)`
+            ? (spotlightReady
+                ? 'translateY(0px) scale(1)'
+                : `translateY(${window.innerHeight}px) scale(1)`)
             : spotlightState === 'visible'
             ? 'translateY(0px) scale(1)'
             : exitTransform;
@@ -260,9 +279,11 @@ const DisplayView: React.FC = () => {
         return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none">
             <div
-              className="transition-all ease-out"
+              className="ease-out"
               style={{
-                transitionDuration: spotlightState === 'entering' ? '1500ms' : '800ms',
+                transition: spotlightReady
+                  ? `transform ${spotlightState === 'entering' ? 1500 : 800}ms ease-out`
+                  : 'none',
                 transform,
               }}
             >

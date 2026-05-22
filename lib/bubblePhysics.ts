@@ -2,19 +2,19 @@
 // The rAF loop reads each field every frame, so changes take effect immediately.
 export const PHYSICS = {
   // Wander-based drift (replaces old per-frame random wind, which caused jitter)
-  WANDER_STRENGTH: 0.4,        // Max target velocity magnitude per axis
-  WANDER_EASING: 0.02,         // How fast velocity eases toward target (0–1)
-  WANDER_INTERVAL_MS: 3000,    // How often each bubble picks a new target velocity
+  WANDER_STRENGTH: 0.45,       // Max target velocity magnitude per axis
+  WANDER_EASING: 0.068,        // How fast velocity eases toward target (0–1)
+  WANDER_INTERVAL_MS: 3600,    // How often each bubble picks a new target velocity
 
-  DAMPING: 0.995,              // Velocity damping per frame (1.0 = no damping)
-  MAX_SPEED: 0.8,              // Max velocity magnitude (px/frame)
-  WALL_BOUNCE_DAMP: 0.5,       // Velocity scale on wall collision
-  COLLISION_DAMP: 0.7,         // Velocity scale on bubble-bubble collision
+  DAMPING: 0.951,              // Velocity damping per frame (1.0 = no damping)
+  MAX_SPEED: 1.0,              // Max velocity magnitude (px/frame)
+  WALL_BOUNCE_DAMP: 0.25,      // Velocity scale on wall collision
+  COLLISION_DAMP: 0.45,        // Velocity scale on bubble-bubble collision
 
-  RADIUS_MIN: 120,
-  RADIUS_MAX: 350,
-  RADIUS_RATIO_MIN: 0.13,      // Min radius as fraction of min(viewportW, viewportH)
-  RADIUS_RATIO_MAX: 0.18,
+  RADIUS_MIN: 195,
+  RADIUS_MAX: 425,
+  RADIUS_RATIO_MIN: 0.16,      // Min radius as fraction of min(viewportW, viewportH)
+  RADIUS_RATIO_MAX: 0.22,
 
   MAX_BUBBLES: 8,
 };

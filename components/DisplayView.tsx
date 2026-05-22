@@ -201,10 +201,10 @@ const DisplayView: React.FC = () => {
 
   const isSpotlightActive = spotlightState !== 'idle';
 
-  // Spotlight diameter: ~40% of the shorter viewport dimension
+  // Spotlight diameter: ~60% of the shorter viewport dimension (1.5× the previous size)
   const spotlightDiameter = typeof window !== 'undefined'
-    ? Math.min(window.innerWidth, window.innerHeight) * 0.4
-    : 400;
+    ? Math.min(window.innerWidth, window.innerHeight) * 0.6
+    : 600;
 
   return (
     <div

@@ -23,6 +23,8 @@ const DisplayView: React.FC = () => {
   const physicsRef = useRef(physics);
   useEffect(() => { physicsRef.current = physics; });
 
+  const handoffRef = useRef<{ x: number; y: number; radius: number } | null>(null);
+
   // Upload URL
   useEffect(() => {
     const explicit = import.meta.env.VITE_UPLOAD_URL as string | undefined;
@@ -111,22 +113,56 @@ const DisplayView: React.FC = () => {
     }
   }, [queue, spotlightState]);
 
-  // Spotlight timing
+  // Spotlight state machine + handoff
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
+
     if (spotlightState === 'entering') {
       t = setTimeout(() => setSpotlightState('visible'), 1500);
     } else if (spotlightState === 'visible') {
-      t = setTimeout(() => setSpotlightState('exiting'), 5000);
-    } else if (spotlightState === 'exiting') {
-      // Handoff happens in Task 9. For now: just clear after exit anim.
       t = setTimeout(() => {
+        // Plan the handoff before transitioning to exiting:
+        const container = physics.containerRef.current;
+        if (container) {
+          const w = container.clientWidth;
+          const h = container.clientHeight;
+          const radius = computeSpawnRadius(w, h);
+
+          if (physics.bubbles.length >= PHYSICS.MAX_BUBBLES) {
+            // Evict oldest: pick the bubble with smallest spawnTime
+            const oldest = [...physics.bubbles].sort((a, b) => a.spawnTime - b.spawnTime)[0];
+            handoffRef.current = { x: oldest.x, y: oldest.y, radius: oldest.radius };
+            physics.markExiting(oldest.id);
+            // Schedule physical removal after pop animation
+            setTimeout(() => physics.remove(oldest.id), 600);
+          } else {
+            handoffRef.current = { x: w / 2, y: h / 2, radius };
+          }
+        }
+        setSpotlightState('exiting');
+      }, 5000);
+    } else if (spotlightState === 'exiting') {
+      // After exit animation completes, spawn the new bubble at the target slot
+      t = setTimeout(() => {
+        const target = handoffRef.current;
+        const photo = spotlightPhotoRef.current;
+        if (target && photo) {
+          physics.spawn({
+            photoId: photo.id,
+            x: target.x,
+            y: target.y,
+            radius: target.radius,
+            vx: (Math.random() * 2 - 1) * 0.3,
+            vy: (Math.random() * 2 - 1) * 0.3,
+          });
+        }
+        handoffRef.current = null;
         setSpotlightPhoto(null);
         setSpotlightState('idle');
       }, 800);
     }
     return () => clearTimeout(t);
-  }, [spotlightState]);
+  }, [spotlightState, physics]);
 
   const isSpotlightActive = spotlightState !== 'idle';
 
@@ -191,27 +227,41 @@ const DisplayView: React.FC = () => {
       </div>
 
       {/* Spotlight overlay */}
-      {spotlightPhoto && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none"
-        >
-          <div
-            className="transition-all ease-out"
-            style={{
-              transitionDuration: spotlightState === 'entering' ? '1500ms' : '800ms',
-              transform:
-                spotlightState === 'entering'
-                  ? `translateY(${window.innerHeight}px) scale(1)`
-                  : spotlightState === 'visible'
-                  ? 'translateY(0px) scale(1)'
-                  : 'translateY(0px) scale(0)',
-              opacity: spotlightState === 'exiting' ? 0 : 1,
-            }}
-          >
-            <Bubble photo={spotlightPhoto} diameter={spotlightDiameter} />
+      {spotlightPhoto && (() => {
+        const container = physics.containerRef.current;
+        const containerRect = container?.getBoundingClientRect();
+        const target = handoffRef.current;
+        // Compute exit translate (from screen center to target wall position)
+        let exitTransform = 'translate(0px, 0px) scale(0)';
+        if (target && containerRect) {
+          const dx = (containerRect.left + target.x) - window.innerWidth / 2;
+          const dy = (containerRect.top + target.y) - window.innerHeight / 2;
+          const shrinkScale = (target.radius * 2) / spotlightDiameter;
+          exitTransform = `translate(${dx}px, ${dy}px) scale(${shrinkScale})`;
+        }
+
+        const transform =
+          spotlightState === 'entering'
+            ? `translateY(${window.innerHeight}px) scale(1)`
+            : spotlightState === 'visible'
+            ? 'translateY(0px) scale(1)'
+            : exitTransform;
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none">
+            <div
+              className="transition-all ease-out"
+              style={{
+                transitionDuration: spotlightState === 'entering' ? '1500ms' : '800ms',
+                transform,
+                opacity: spotlightState === 'exiting' ? 1 : 1, // keep visible during shrink
+              }}
+            >
+              <Bubble photo={spotlightPhoto} diameter={spotlightDiameter} />
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

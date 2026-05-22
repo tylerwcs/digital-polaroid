@@ -331,21 +331,14 @@ const DisplayView: React.FC = () => {
         aria-hidden
       />
 
-      {/* QR + Logo */}
+      {/* QR */}
       <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
         {uploadUrl && (
-          <div className="bg-black/90 p-3 rounded-xl shadow-2xl border border-white/30">
-            <div className="bg-white p-2 rounded-md">
-              <QRCodeSVG value={uploadUrl} size={100} level="H" bgColor="#ffffff" fgColor="#000000" />
-            </div>
-            <p className="text-center text-xs font-semibold mt-2 text-white">Scan to Upload</p>
+          <div className="bg-white p-3 rounded-xl shadow-2xl border border-black/10">
+            <QRCodeSVG value={uploadUrl} size={100} level="H" bgColor="#ffffff" fgColor="#000000" />
+            <p className="text-center text-xs font-semibold mt-2 text-black">Scan to Upload</p>
           </div>
         )}
-        <img
-          src="/logo masthead 2.png"
-          alt="Holiday Tours"
-          className="w-32 h-auto drop-shadow-lg opacity-90"
-        />
       </div>
 
       {/* Debug control panel (temporary) */}

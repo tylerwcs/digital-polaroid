@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
-import { BubbleState, PHYSICS } from '../lib/bubblePhysics';
+import { BubbleState, PHYSICS, clampSpeed, resolveWallCollision, resolveBubbleCollision } from '../lib/bubblePhysics';
 
 export interface UseBubblePhysicsResult {
   bubbles: BubbleState[];
@@ -69,6 +69,59 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
       if (!validIds.has(id)) elementsRef.current.delete(id);
     }
   }, [renderTrigger]);
+
+  // Physics loop
+  useEffect(() => {
+    let rafId: number;
+    const reducedMotion = typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const tick = () => {
+      const container = containerRef.current;
+      if (!container) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+
+      const live = bubblesRef.current.filter((b) => b.lifecycle === 'live');
+
+      // Per-bubble update (skip motion entirely if reduced motion)
+      for (const b of live) {
+        if (!reducedMotion) {
+          // Wind drift
+          b.vx += (Math.random() * 2 - 1) * PHYSICS.WIND_FORCE;
+          b.vy += (Math.random() * 2 - 1) * PHYSICS.WIND_FORCE;
+          // Damping
+          b.vx *= PHYSICS.DAMPING;
+          b.vy *= PHYSICS.DAMPING;
+          // Speed clamp
+          const c = clampSpeed(b.vx, b.vy);
+          b.vx = c.vx; b.vy = c.vy;
+          // Integrate
+          b.x += b.vx;
+          b.y += b.vy;
+        }
+        // Wall collision (always run, in case of resize)
+        const wc = resolveWallCollision(b.x, b.y, b.vx, b.vy, b.radius, w, h);
+        b.x = wc.x; b.y = wc.y; b.vx = wc.vx; b.vy = wc.vy;
+      }
+
+      // Apply positions to DOM (bypass React)
+      for (const b of live) {
+        const el = elementsRef.current.get(b.id);
+        if (el) {
+          el.style.transform = `translate3d(${b.x - b.radius}px, ${b.y - b.radius}px, 0)`;
+        }
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   return {
     bubbles: bubblesRef.current,

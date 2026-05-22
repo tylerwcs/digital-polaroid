@@ -1,23 +1,35 @@
+// PHYSICS is mutable so the dev DebugPanel can tweak values at runtime.
+// The rAF loop reads each field every frame, so changes take effect immediately.
 export const PHYSICS = {
-  WIND_FORCE: 0.02,        // Max random force per axis per frame
-  DAMPING: 0.985,          // Velocity damping per frame
-  MAX_SPEED: 0.6,          // Max velocity magnitude (px/frame)
-  WALL_BOUNCE_DAMP: 0.5,   // Velocity scale on wall collision
-  COLLISION_DAMP: 0.7,     // Velocity scale on bubble-bubble collision
-  RADIUS_MIN: 90,
-  RADIUS_MAX: 200,
-  RADIUS_RATIO_MIN: 0.09,  // Min radius as fraction of min(viewportW, viewportH)
-  RADIUS_RATIO_MAX: 0.13,
+  // Wander-based drift (replaces old per-frame random wind, which caused jitter)
+  WANDER_STRENGTH: 0.4,        // Max target velocity magnitude per axis
+  WANDER_EASING: 0.02,         // How fast velocity eases toward target (0–1)
+  WANDER_INTERVAL_MS: 3000,    // How often each bubble picks a new target velocity
+
+  DAMPING: 0.995,              // Velocity damping per frame (1.0 = no damping)
+  MAX_SPEED: 0.8,              // Max velocity magnitude (px/frame)
+  WALL_BOUNCE_DAMP: 0.5,       // Velocity scale on wall collision
+  COLLISION_DAMP: 0.7,         // Velocity scale on bubble-bubble collision
+
+  RADIUS_MIN: 120,
+  RADIUS_MAX: 350,
+  RADIUS_RATIO_MIN: 0.13,      // Min radius as fraction of min(viewportW, viewportH)
+  RADIUS_RATIO_MAX: 0.18,
+
   MAX_BUBBLES: 8,
-} as const;
+};
 
 export interface BubbleState {
   id: string;
-  photoId: string;        // PhotoEntry.id, used to look up image/signature
-  x: number;              // center x in container coordinates
-  y: number;              // center y
-  vx: number;             // velocity x (px/frame)
-  vy: number;             // velocity y
+  photoId: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  // Wander target velocity — re-randomized every WANDER_INTERVAL_MS
+  targetVx: number;
+  targetVy: number;
+  lastWanderTs: number;
   radius: number;
   spawnTime: number;
   lifecycle: 'entering' | 'live' | 'exiting';
@@ -30,6 +42,11 @@ export const computeSpawnRadius = (viewportW: number, viewportH: number): number
   const r = dim * randomInRange(PHYSICS.RADIUS_RATIO_MIN, PHYSICS.RADIUS_RATIO_MAX);
   return Math.max(PHYSICS.RADIUS_MIN, Math.min(PHYSICS.RADIUS_MAX, r));
 };
+
+export const randomWanderTarget = () => ({
+  vx: (Math.random() * 2 - 1) * PHYSICS.WANDER_STRENGTH,
+  vy: (Math.random() * 2 - 1) * PHYSICS.WANDER_STRENGTH,
+});
 
 // Clamp a bubble's position so its edge stays inside [0, w] x [0, h].
 // Returns new (x, y, vx, vy) — velocity is reflected and damped if a wall was hit.
@@ -53,25 +70,21 @@ export const resolveBubbleCollision = (a: BubbleState, b: BubbleState): void => 
   const minDist = a.radius + b.radius;
   if (dist === 0 || dist >= minDist) return;
 
-  const nx = dx / dist;  // collision normal
+  const nx = dx / dist;
   const ny = dy / dist;
   const overlap = minDist - dist;
 
-  // Positional correction (each moves half the overlap)
   a.x -= nx * overlap * 0.5;
   a.y -= ny * overlap * 0.5;
   b.x += nx * overlap * 0.5;
   b.y += ny * overlap * 0.5;
 
-  // Normal velocity components
   const an = a.vx * nx + a.vy * ny;
   const bn = b.vx * nx + b.vy * ny;
 
-  // Only resolve if moving toward each other
   if (an - bn <= 0) return;
 
   const damp = PHYSICS.COLLISION_DAMP;
-  // Swap normal components, damped
   a.vx += (bn - an) * nx * damp;
   a.vy += (bn - an) * ny * damp;
   b.vx += (an - bn) * nx * damp;

@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { getPhotos, subscribeToUpdates, subscribeToDelete } from '../services/storageService';
 import { PhotoEntry } from '../types';
 import { Bubble } from './Bubble';
+import { DebugPanel } from './DebugPanel';
 import { useBubblePhysics } from '../hooks/useBubblePhysics';
 import { PHYSICS, computeSpawnRadius, randomInRange } from '../lib/bubblePhysics';
 
@@ -44,6 +45,23 @@ const DisplayView: React.FC = () => {
     const vx = randomInRange(-0.2, 0.2);
     const vy = randomInRange(-0.2, 0.2);
     physicsRef.current.spawn({ photoId: photo.id, x, y, radius, vx, vy });
+  };
+
+  // Debug: clear all bubbles and re-spawn them from photoMap using current sizing.
+  const respawnAll = () => {
+    const container = physicsRef.current.containerRef.current;
+    if (!container) return;
+    // Remove every current bubble immediately
+    for (const b of [...physicsRef.current.bubbles]) {
+      physicsRef.current.remove(b.id);
+    }
+    // Re-spawn from photoMap (most recent first), up to MAX_BUBBLES
+    const photos: PhotoEntry[] = Array.from(photoMap.values());
+    photos.sort((a, b) => b.timestamp - a.timestamp);
+    const top = photos.slice(0, PHYSICS.MAX_BUBBLES);
+    requestAnimationFrame(() => {
+      for (const p of top) spawnInitial(p, container);
+    });
   };
 
   // Initial load
@@ -236,6 +254,14 @@ const DisplayView: React.FC = () => {
           )}
       </div>
 
+      {/* Spotlight darken overlay — covers wall + background, sits below QR/logo and spotlight */}
+      <div
+        className={`absolute inset-0 z-[5] bg-black pointer-events-none transition-opacity duration-1000 ease-in-out ${
+          isSpotlightActive ? 'opacity-60' : 'opacity-0'
+        }`}
+        aria-hidden
+      />
+
       {/* QR + Logo */}
       <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
         {uploadUrl && (
@@ -252,6 +278,9 @@ const DisplayView: React.FC = () => {
           className="w-32 h-auto drop-shadow-lg opacity-90"
         />
       </div>
+
+      {/* Debug control panel (temporary) */}
+      <DebugPanel onRespawn={respawnAll} />
 
       {/* Spotlight overlay */}
       {spotlightPhoto && (() => {

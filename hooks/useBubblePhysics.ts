@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
-import { BubbleState, PHYSICS, clampSpeed, resolveWallCollision, resolveBubbleCollision } from '../lib/bubblePhysics';
+import { BubbleState, PHYSICS, clampSpeed, resolveWallCollision, resolveBubbleCollision, randomWanderTarget } from '../lib/bubblePhysics';
 
 export interface UseBubblePhysicsResult {
   bubbles: BubbleState[];
@@ -29,6 +29,7 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
     photoId: string; x: number; y: number; radius: number; vx?: number; vy?: number;
   }): string => {
     const id = `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const wander = randomWanderTarget();
     const bubble: BubbleState = {
       id,
       photoId: params.photoId,
@@ -36,6 +37,9 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
       y: params.y,
       vx: params.vx ?? 0,
       vy: params.vy ?? 0,
+      targetVx: wander.vx,
+      targetVy: wander.vy,
+      lastWanderTs: Date.now(),
       radius: params.radius,
       spawnTime: Date.now(),
       lifecycle: 'live',
@@ -87,13 +91,21 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
 
       const live = bubblesRef.current.filter((b) => b.lifecycle === 'live');
 
+      const now = Date.now();
       // Per-bubble update (skip motion entirely if reduced motion)
       for (const b of live) {
         if (!reducedMotion) {
-          // Wind drift
-          b.vx += (Math.random() * 2 - 1) * PHYSICS.WIND_FORCE;
-          b.vy += (Math.random() * 2 - 1) * PHYSICS.WIND_FORCE;
-          // Damping
+          // Re-randomize wander target periodically (per-bubble, staggered)
+          if (now - b.lastWanderTs > PHYSICS.WANDER_INTERVAL_MS) {
+            const w = randomWanderTarget();
+            b.targetVx = w.vx;
+            b.targetVy = w.vy;
+            b.lastWanderTs = now;
+          }
+          // Ease velocity toward wander target (smooth drift, no jitter)
+          b.vx += (b.targetVx - b.vx) * PHYSICS.WANDER_EASING;
+          b.vy += (b.targetVy - b.vy) * PHYSICS.WANDER_EASING;
+          // Damping (mostly for post-collision settle)
           b.vx *= PHYSICS.DAMPING;
           b.vy *= PHYSICS.DAMPING;
           // Speed clamp

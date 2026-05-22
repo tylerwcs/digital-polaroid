@@ -207,6 +207,16 @@ const DisplayView: React.FC = () => {
             </div>
           );
         })}
+
+          {physics.bubbles.length === 0 && !isSpotlightActive && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Bubble
+                photo={null}
+                diameter={Math.min(window.innerWidth, window.innerHeight) * 0.3}
+                placeholderText="Scan the QR to add a photo"
+              />
+            </div>
+          )}
       </div>
 
       {/* QR + Logo */}

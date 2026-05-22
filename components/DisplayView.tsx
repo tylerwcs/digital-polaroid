@@ -102,6 +102,39 @@ const DisplayView: React.FC = () => {
     return () => { unsub(); unsubDel(); };
   }, []);
 
+  // Queue processor: pull next photo into spotlight when idle
+  useEffect(() => {
+    if (queue.length > 0 && spotlightState === 'idle') {
+      setSpotlightPhoto(queue[0]);
+      setQueue((prev) => prev.slice(1));
+      setSpotlightState('entering');
+    }
+  }, [queue, spotlightState]);
+
+  // Spotlight timing
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    if (spotlightState === 'entering') {
+      t = setTimeout(() => setSpotlightState('visible'), 1500);
+    } else if (spotlightState === 'visible') {
+      t = setTimeout(() => setSpotlightState('exiting'), 5000);
+    } else if (spotlightState === 'exiting') {
+      // Handoff happens in Task 9. For now: just clear after exit anim.
+      t = setTimeout(() => {
+        setSpotlightPhoto(null);
+        setSpotlightState('idle');
+      }, 800);
+    }
+    return () => clearTimeout(t);
+  }, [spotlightState]);
+
+  const isSpotlightActive = spotlightState !== 'idle';
+
+  // Spotlight diameter: ~40% of the shorter viewport dimension
+  const spotlightDiameter = typeof window !== 'undefined'
+    ? Math.min(window.innerWidth, window.innerHeight) * 0.4
+    : 400;
+
   return (
     <div
       className="h-screen w-screen overflow-hidden relative text-white"
@@ -111,10 +144,12 @@ const DisplayView: React.FC = () => {
         backgroundPosition: 'center',
       }}
     >
-      {/* Bubble wall container */}
+      {/* Bubble wall container (blurs when spotlight active) */}
       <div
         ref={physics.containerRef}
-        className="absolute inset-0"
+        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
+          isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''
+        }`}
       >
         {physics.bubbles.map((b) => {
           const photo = photoMap.get(b.photoId) ?? null;
@@ -138,7 +173,7 @@ const DisplayView: React.FC = () => {
         })}
       </div>
 
-      {/* QR + Logo (bottom-right, unchanged) */}
+      {/* QR + Logo */}
       <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
         {uploadUrl && (
           <div className="bg-black/90 p-3 rounded-xl shadow-2xl border border-white/30">
@@ -154,6 +189,29 @@ const DisplayView: React.FC = () => {
           className="w-32 h-auto drop-shadow-lg opacity-90"
         />
       </div>
+
+      {/* Spotlight overlay */}
+      {spotlightPhoto && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none"
+        >
+          <div
+            className="transition-all ease-out"
+            style={{
+              transitionDuration: spotlightState === 'entering' ? '1500ms' : '800ms',
+              transform:
+                spotlightState === 'entering'
+                  ? `translateY(${window.innerHeight}px) scale(1)`
+                  : spotlightState === 'visible'
+                  ? 'translateY(0px) scale(1)'
+                  : 'translateY(0px) scale(0)',
+              opacity: spotlightState === 'exiting' ? 0 : 1,
+            }}
+          >
+            <Bubble photo={spotlightPhoto} diameter={spotlightDiameter} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

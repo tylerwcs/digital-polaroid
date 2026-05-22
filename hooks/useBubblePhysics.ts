@@ -108,6 +108,15 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
         b.x = wc.x; b.y = wc.y; b.vx = wc.vx; b.vy = wc.vy;
       }
 
+      // Pairwise bubble-bubble collision (only between live bubbles)
+      if (!reducedMotion) {
+        for (let i = 0; i < live.length; i++) {
+          for (let j = i + 1; j < live.length; j++) {
+            resolveBubbleCollision(live[i], live[j]);
+          }
+        }
+      }
+
       // Apply positions to DOM (bypass React)
       for (const b of live) {
         const el = elementsRef.current.get(b.id);

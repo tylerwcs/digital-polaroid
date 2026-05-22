@@ -206,8 +206,39 @@ const DisplayView: React.FC = () => {
     ? Math.min(window.innerWidth, window.innerHeight) * 0.6
     : 600;
 
-  // Fade the background video in once it actually starts playing.
+  // Background video: two elements that crossfade at each loop point for a seamless loop.
+  const VIDEO_FADE_MS = 1500;
+  const videoARef = useRef<HTMLVideoElement>(null);
+  const videoBRef = useRef<HTMLVideoElement>(null);
+  const [activeVideo, setActiveVideo] = useState<'A' | 'B'>('A');
+  const [crossfading, setCrossfading] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+
+  // When the currently-active video gets close to the end, start the other one and crossfade.
+  const handleVideoTimeUpdate = (which: 'A' | 'B') => () => {
+    if (which !== activeVideo || crossfading) return;
+    const el = which === 'A' ? videoARef.current : videoBRef.current;
+    const other = which === 'A' ? videoBRef.current : videoARef.current;
+    if (!el || !other || !isFinite(el.duration) || el.duration === 0) return;
+    const remaining = el.duration - el.currentTime;
+    if (remaining < VIDEO_FADE_MS / 1000) {
+      try { other.currentTime = 0; } catch { /* ignore seek failures */ }
+      other.play().catch(() => { /* autoplay block ignored — user is on /wall, will retry next loop */ });
+      setCrossfading(true);
+    }
+  };
+
+  // When the active video ends, swap which one is active. The other one has been fading in.
+  const handleVideoEnded = (which: 'A' | 'B') => () => {
+    if (which !== activeVideo) return;
+    setActiveVideo(which === 'A' ? 'B' : 'A');
+    setCrossfading(false);
+  };
+
+  // Visibility math: the "active and not crossfading" video is visible, AND
+  // the "inactive but crossfading" video (the one fading in) is also visible.
+  const aVisible = (activeVideo === 'A' && !crossfading) || (activeVideo === 'B' && crossfading);
+  const bVisible = (activeVideo === 'B' && !crossfading) || (activeVideo === 'A' && crossfading);
 
   return (
     <div
@@ -219,16 +250,37 @@ const DisplayView: React.FC = () => {
         backgroundPosition: 'center',
       }}
     >
-      {/* Looping background video — fades in once it starts playing */}
+      {/* Looping background video — two elements crossfade at each loop seam */}
       <video
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-[1500ms] ease-in-out"
-        style={{ opacity: videoReady ? 1 : 0 }}
+        ref={videoARef}
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
+        style={{
+          opacity: videoReady && aVisible ? 1 : 0,
+          transitionDuration: `${VIDEO_FADE_MS}ms`,
+        }}
         src="/bubbleBG.mov"
         autoPlay
         muted
-        loop
         playsInline
+        preload="auto"
         onPlaying={() => setVideoReady(true)}
+        onTimeUpdate={handleVideoTimeUpdate('A')}
+        onEnded={handleVideoEnded('A')}
+        aria-hidden
+      />
+      <video
+        ref={videoBRef}
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
+        style={{
+          opacity: videoReady && bVisible ? 1 : 0,
+          transitionDuration: `${VIDEO_FADE_MS}ms`,
+        }}
+        src="/bubbleBG.mov"
+        muted
+        playsInline
+        preload="auto"
+        onTimeUpdate={handleVideoTimeUpdate('B')}
+        onEnded={handleVideoEnded('B')}
         aria-hidden
       />
 

@@ -122,19 +122,19 @@ const DisplayView: React.FC = () => {
     } else if (spotlightState === 'visible') {
       t = setTimeout(() => {
         // Plan the handoff before transitioning to exiting:
-        const container = physics.containerRef.current;
+        const container = physicsRef.current.containerRef.current;
         if (container) {
           const w = container.clientWidth;
           const h = container.clientHeight;
           const radius = computeSpawnRadius(w, h);
 
-          if (physics.bubbles.length >= PHYSICS.MAX_BUBBLES) {
+          if (physicsRef.current.bubbles.length >= PHYSICS.MAX_BUBBLES) {
             // Evict oldest: pick the bubble with smallest spawnTime
-            const oldest = [...physics.bubbles].sort((a, b) => a.spawnTime - b.spawnTime)[0];
+            const oldest = [...physicsRef.current.bubbles].sort((a, b) => a.spawnTime - b.spawnTime)[0];
             handoffRef.current = { x: oldest.x, y: oldest.y, radius: oldest.radius };
-            physics.markExiting(oldest.id);
+            physicsRef.current.markExiting(oldest.id);
             // Schedule physical removal after pop animation
-            setTimeout(() => physics.remove(oldest.id), 600);
+            setTimeout(() => physicsRef.current.remove(oldest.id), 600);
           } else {
             handoffRef.current = { x: w / 2, y: h / 2, radius };
           }
@@ -147,7 +147,7 @@ const DisplayView: React.FC = () => {
         const target = handoffRef.current;
         const photo = spotlightPhotoRef.current;
         if (target && photo) {
-          physics.spawn({
+          physicsRef.current.spawn({
             photoId: photo.id,
             x: target.x,
             y: target.y,
@@ -162,7 +162,7 @@ const DisplayView: React.FC = () => {
       }, 800);
     }
     return () => clearTimeout(t);
-  }, [spotlightState, physics]);
+  }, [spotlightState]);
 
   const isSpotlightActive = spotlightState !== 'idle';
 
@@ -264,7 +264,6 @@ const DisplayView: React.FC = () => {
               style={{
                 transitionDuration: spotlightState === 'entering' ? '1500ms' : '800ms',
                 transform,
-                opacity: spotlightState === 'exiting' ? 1 : 1, // keep visible during shrink
               }}
             >
               <Bubble photo={spotlightPhoto} diameter={spotlightDiameter} />

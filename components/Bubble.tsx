@@ -29,6 +29,14 @@ export const Bubble: React.FC<BubbleProps> = ({
       style={{
         width: diameter,
         height: diameter,
+        // Layered shadow + glow — drop-shadow filters respect the bubble's
+        // alpha mask, so the shadow follows the spherical shape, not the
+        // square wrapper.
+        filter: [
+          'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.45))',    // big soft cast shadow (lift)
+          'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35))',      // close contact shadow
+          'drop-shadow(0 0 12px rgba(255, 255, 255, 0.25))', // subtle bright halo
+        ].join(' '),
         ...style,
       }}
     >

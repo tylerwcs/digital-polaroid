@@ -20,6 +20,9 @@ const DisplayView: React.FC = () => {
   const spotlightPhotoRef = useRef<PhotoEntry | null>(null);
   useEffect(() => { spotlightPhotoRef.current = spotlightPhoto; }, [spotlightPhoto]);
 
+  const physicsRef = useRef(physics);
+  useEffect(() => { physicsRef.current = physics; });
+
   // Upload URL
   useEffect(() => {
     const explicit = import.meta.env.VITE_UPLOAD_URL as string | undefined;
@@ -72,7 +75,7 @@ const DisplayView: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
-  // Websocket subscriptions
+  // Websocket subscriptions — subscribe ONCE on mount; read physics via ref to avoid re-subscribing
   useEffect(() => {
     const unsub = subscribeToUpdates((newPhoto) => {
       setPhotoMap((m) => {
@@ -89,15 +92,15 @@ const DisplayView: React.FC = () => {
         return next;
       });
       setQueue((prev) => prev.filter((p) => p.id !== deletedId));
-      // Remove any bubble with this photoId
-      const target = physics.bubbles.find((b) => b.photoId === deletedId);
-      if (target) physics.markExiting(target.id);
+      // Remove any bubble with this photoId (read live state via ref)
+      const target = physicsRef.current.bubbles.find((b) => b.photoId === deletedId);
+      if (target) physicsRef.current.markExiting(target.id);
       if (spotlightPhotoRef.current?.id === deletedId) {
         setSpotlightState('exiting');
       }
     });
     return () => { unsub(); unsubDel(); };
-  }, [physics]);
+  }, []);
 
   return (
     <div

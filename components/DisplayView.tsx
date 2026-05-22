@@ -206,15 +206,32 @@ const DisplayView: React.FC = () => {
     ? Math.min(window.innerWidth, window.innerHeight) * 0.6
     : 600;
 
+  // Fade the background video in once it actually starts playing.
+  const [videoReady, setVideoReady] = useState(false);
+
   return (
     <div
-      className="h-screen w-screen overflow-hidden relative text-white"
+      className="h-screen w-screen overflow-hidden relative text-white bg-black"
       style={{
+        // Static poster as the initial paint so there's no black flash before the video loads.
         backgroundImage: "url('/bubblesBG.jpeg')",
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}
     >
+      {/* Looping background video — fades in once it starts playing */}
+      <video
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-[1500ms] ease-in-out"
+        style={{ opacity: videoReady ? 1 : 0 }}
+        src="/bubbleBG.mov"
+        autoPlay
+        muted
+        loop
+        playsInline
+        onPlaying={() => setVideoReady(true)}
+        aria-hidden
+      />
+
       {/* Bubble wall container (blurs when spotlight active) */}
       <div
         ref={physics.containerRef}

@@ -132,6 +132,23 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  // Window resize: clamp bubbles back into new bounds
+  useEffect(() => {
+    const onResize = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      for (const b of bubblesRef.current) {
+        if (b.lifecycle !== 'live') continue;
+        const wc = resolveWallCollision(b.x, b.y, b.vx, b.vy, b.radius, w, h);
+        b.x = wc.x; b.y = wc.y; b.vx = wc.vx; b.vy = wc.vy;
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   return {
     bubbles: bubblesRef.current,
     containerRef,

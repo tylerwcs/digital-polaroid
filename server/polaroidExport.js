@@ -28,9 +28,9 @@ const TAPE_ROT_DEG = -3;
 const TAPE_COLOR = '#d8cfbf';
 const TAPE_OPACITY = 0.55;
 // Butterfly watermark
-const WM_SIZE = 210 * S;
-const WM_X = (320 - 210 + 45) * S;            // overflow off the right
-const WM_Y = (400 - 210 + 50) * S;            // overflow off the bottom
+const WM_SIZE = 300 * S;
+const WM_X = (320 - 300 + 105) * S;           // overflow off the right
+const WM_Y = (400 - 300 + 115) * S;           // overflow off the bottom
 const WM_COLOR = '#f6d860';
 const WM_OPACITY = 0.55;
 // Caption typography

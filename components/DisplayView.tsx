@@ -280,43 +280,36 @@ const DisplayView: React.FC = () => {
       
       {/* Background Wrapper - Blurs when spotlight is active */}
       <div className={`flex-grow flex flex-col relative transition-all duration-1000 ease-in-out ${isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''}`}>
-        <video
+        <img
           className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
+          src="/background.jpeg"
+          alt=""
           aria-hidden
-        >
-          <source
-            src="/BG.mp4"
-            type="video/mp4"
-          />
-        </video>
+        />
 
         {/* Logo & QR Code Container */}
-        <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
+        <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-8">
           {/* QR Code */}
           {uploadUrl && (
-            <div className="bg-black/90 p-3 rounded-xl shadow-2xl border border-white/30 transition-transform hover:scale-105">
+            <div className="bg-white/85 p-3 rounded-xl shadow-2xl border border-white/40 transition-transform hover:scale-105">
               <div className="bg-white p-2 rounded-md">
-                <QRCodeSVG 
-                  value={uploadUrl} 
+                <QRCodeSVG
+                  value={uploadUrl}
                   size={100}
                   level="H"
                   bgColor="#ffffff"
                   fgColor="#000000"
                 />
               </div>
-              <p className="text-center text-xs font-semibold mt-2 text-white">Scan to Upload</p>
+              <p className="text-center text-xs font-semibold mt-2 text-black">Scan to Upload</p>
             </div>
           )}
 
           {/* Logo */}
-          <img 
-            src="/logo masthead 2.png" 
-            alt="Holiday Tours" 
-            className="w-32 md:w-32 h-auto drop-shadow-lg opacity-90"
+          <img
+            src="/libre.png"
+            alt="FreeStyle Libre"
+            className="w-40 md:w-44 h-auto drop-shadow-lg opacity-90"
           />
         </div>
 

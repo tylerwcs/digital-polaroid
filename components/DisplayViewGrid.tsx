@@ -205,19 +205,12 @@ const DisplayViewGrid: React.FC = () => {
       
       {/* Background Wrapper */}
       <div className="flex-grow flex flex-col relative">
-        <video
+        <img
           className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
+          src="/background.jpeg"
+          alt=""
           aria-hidden
-        >
-          <source
-            src="/dynamic-orange-and-yellow-swirling-gradient-backgr-2026-01-28-05-20-19-utc.mp4"
-            type="video/mp4"
-          />
-        </video>
+        />
 
         <main 
           ref={containerRef}

@@ -53,7 +53,16 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'photos.json');
+// Photo metadata file. Configurable so it can live on a persistent volume
+// (e.g. DATA_FILE=/data/photos.json on Railway) and survive redeploys.
+// A relative value resolves against the server dir, like UPLOAD_DIR.
+const resolveDataFile = () => {
+  const fromEnv = process.env.DATA_FILE;
+  if (!fromEnv) return path.join(__dirname, 'photos.json');
+  if (path.isAbsolute(fromEnv)) return path.normalize(fromEnv);
+  return path.resolve(__dirname, fromEnv);
+};
+const DATA_FILE = resolveDataFile();
 
 app.use(cors());
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
@@ -169,6 +178,9 @@ const normalizePhotoRecord = async (entry) => {
 const ensureUploadDir = async () => {
   try {
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    if (ENABLE_DISK_CACHE) {
+      await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
+    }
   } catch (error) {
     console.error('Failed to ensure upload directory exists:', error);
     throw error;

@@ -2,26 +2,51 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
 
-/** ~max-w-[280px] on wall, 2x for export */
-const POLAROID_OUTER_W = 560;
-const PAD_X = 24; // p-3 * 2
-const PAD_TOP = 24;
-const PAD_BOTTOM = 96; // pb-12 * 2
-const GAP_IMG_CAPTION = 32; // mb-4 * 2
-const FRAME_BG = '#f3f4f6';
-const FRAME_BORDER = '#e5e7eb';
+/**
+ * Server-side render that mirrors components/Polaroid.tsx.
+ * The component is authored in a 320x400 viewBox; we render at 2x for crisp PNGs.
+ */
+const S = 2; // export scale factor
+
+// ─── Layout (kept in sync with components/Polaroid.tsx) ───
+const CARD_W = 320 * S;
+const CARD_H = 400 * S;
+const CARD_RX = 10 * S;
+const PAD = 16 * S;
+const PHOTO_X = PAD;
+const PHOTO_Y = (16 + 8) * S;                 // extra top space (room for tape)
+const PHOTO_W = (320 - 16 * 2) * S;           // 288 * S
+const PHOTO_H = 280 * S;
+const PHOTO_RX = 4 * S;
+const CAPTION_Y = PHOTO_Y + PHOTO_H + 8 * S;
+const CAPTION_H = CARD_H - CAPTION_Y - 8 * S;
+// Tape
+const TAPE_W = 70 * S;
+const TAPE_H = 22 * S;
+const TAPE_Y = -6 * S;
+const TAPE_ROT_DEG = -3;
+const TAPE_COLOR = '#d8cfbf';
+const TAPE_OPACITY = 0.55;
+// Butterfly watermark
+const WM_SIZE = 210 * S;
+const WM_X = (320 - 210 + 45) * S;            // overflow off the right
+const WM_Y = (400 - 210 + 50) * S;            // overflow off the bottom
+const WM_COLOR = '#f6d860';
+const WM_OPACITY = 0.55;
+// Caption typography
+const FONT_SIZE_HAS_IMAGE = 26 * S;
+const FONT_SIZE_TEXT_ONLY = 32 * S;
 const CAPTION_COLOR = '#1f2937';
 const FONT_FAMILY = 'Caveat';
 const EMOJI_FONT_FAMILY = 'Noto Color Emoji';
-const FONT_SIZE_HAS_IMAGE = 60; // ~ text-3xl * 2
-const FONT_SIZE_TEXT_ONLY = 72; // ~ text-4xl * 2
-const CAPTION_ONLY_INNER_PY = 64; // py-8 * 2
+// Card shadow / output margin
+const OUT_MARGIN = 40;
 
-/** Caveat for marker text + Noto Color Emoji so captions match the browser (emoji fallback). */
 const captionFont = (sizePx) =>
   `700 ${sizePx}px ${FONT_FAMILY}, "${EMOJI_FONT_FAMILY}"`;
 
 let captionFontsRegistered = false;
+let butterflyImgPromise = null;
 
 async function ensureCaptionFonts(serverDir) {
   if (captionFontsRegistered) return;
@@ -64,6 +89,29 @@ async function ensureCaptionFonts(serverDir) {
   captionFontsRegistered = true;
 }
 
+/** Load /public/butterfly.png once (relative to the server dir). Returns null if missing. */
+function loadButterfly(serverDir) {
+  if (!butterflyImgPromise) {
+    const wmPath = path.join(serverDir, '..', 'public', 'butterfly.png');
+    butterflyImgPromise = fs
+      .readFile(wmPath)
+      .then((buf) => loadImage(buf))
+      .catch(() => null);
+  }
+  return butterflyImgPromise;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
 function wrapLines(ctx, text, maxWidth) {
   const words = String(text || '').split(/\s+/).filter(Boolean);
   if (words.length === 0) return [''];
@@ -82,25 +130,40 @@ function wrapLines(ctx, text, maxWidth) {
   return lines;
 }
 
-function measureCaptionBlock(ctx, caption, maxWidth, lineHeight) {
-  const lines = wrapLines(ctx, caption, maxWidth);
-  const height = Math.max(1, lines.length) * lineHeight;
-  return { lines, height };
+/** object-fit: cover into a box */
+function drawImageCover(ctx, img, x, y, w, h) {
+  const scale = Math.max(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-/**
- * Draw image scaled to width (like w-full h-auto). Returns drawn height.
- */
-function drawImageFitWidth(ctx, img, x, y, targetW) {
-  const scale = targetW / img.width;
-  const h = Math.round(img.height * scale);
-  ctx.drawImage(img, x, y, targetW, h);
-  return h;
+/** object-contain into a box, with optional alpha */
+function drawImageContain(ctx, img, x, y, w, h, alpha = 1) {
+  const scale = Math.min(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
 }
 
-/**
- * Signature overlay: object-contain in photo rect
- */
+/** Recolor a (white/transparent) image into a solid tint using its alpha as a mask. */
+function tintImage(img, color) {
+  const c = createCanvas(img.width, img.height);
+  const cx = c.getContext('2d');
+  cx.drawImage(img, 0, 0);
+  cx.globalCompositeOperation = 'source-in';
+  cx.fillStyle = color;
+  cx.fillRect(0, 0, img.width, img.height);
+  return c;
+}
+
 function drawSignatureContain(ctx, sigImg, x, y, w, h) {
   const scale = Math.min(w / sigImg.width, h / sigImg.height);
   const dw = Math.round(sigImg.width * scale);
@@ -111,42 +174,61 @@ function drawSignatureContain(ctx, sigImg, x, y, w, h) {
   ctx.globalAlpha = 0.9;
   ctx.shadowColor = 'rgba(0,0,0,0.35)';
   ctx.shadowBlur = 4;
-  ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 1;
   ctx.drawImage(sigImg, dx, dy, dw, dh);
   ctx.restore();
 }
 
-function drawRotatedCard(sourceCanvas, rotationDeg) {
+function drawCaptionCentered(ctx, caption, x, y, w, h, fontSize) {
+  ctx.font = captionFont(fontSize);
+  ctx.fillStyle = CAPTION_COLOR;
+  ctx.textBaseline = 'top';
+  const lineHeight = Math.round(fontSize * 1.2);
+  const lines = wrapLines(ctx, caption, w - 8 * S);
+  const blockH = lines.length * lineHeight;
+  let cy = y + Math.max(0, (h - blockH) / 2); // vertical center
+  const centerX = x + w / 2;
+  lines.forEach((line) => {
+    const lw = ctx.measureText(line).width;
+    ctx.fillText(line, centerX - lw / 2, cy);
+    cy += lineHeight;
+  });
+}
+
+/** Draw the finished card canvas onto a larger transparent canvas, rotated, with a soft shadow. */
+function rotateWithShadow(card, rotationDeg) {
   const rad = (rotationDeg * Math.PI) / 180;
-  const w = sourceCanvas.width;
-  const h = sourceCanvas.height;
+  const w = card.width;
+  const h = card.height;
   const cos = Math.abs(Math.cos(rad));
   const sin = Math.abs(Math.sin(rad));
-  const outW = Math.ceil(w * cos + h * sin);
-  const outH = Math.ceil(w * sin + h * cos);
+  const rotW = Math.ceil(w * cos + h * sin);
+  const rotH = Math.ceil(w * sin + h * cos);
+  const outW = rotW + OUT_MARGIN * 2;
+  const outH = rotH + OUT_MARGIN * 2;
   const out = createCanvas(outW, outH);
   const octx = out.getContext('2d');
-  octx.fillStyle = '#ffffff';
-  octx.fillRect(0, 0, outW, outH);
   octx.translate(outW / 2, outH / 2);
   octx.rotate(rad);
-  octx.drawImage(sourceCanvas, -w / 2, -h / 2);
+  octx.shadowColor = 'rgba(0,0,0,0.25)';
+  octx.shadowBlur = 24;
+  octx.shadowOffsetY = 8;
+  octx.drawImage(card, -w / 2, -h / 2);
   return out;
 }
 
 /**
  * @param {object} photo - server photo record
  * @param {object} deps
- * @param {string} deps.__dirname - server dir for font cache
+ * @param {string} deps.__dirname - server dir for fonts + asset lookup
  * @param {(p:string)=>string} deps.fullImagePath
  * @param {(uri:string)=>{buffer:Buffer,mime:string}|null} deps.decodeBase64Image
  */
 export async function renderPolaroidPng(photo, deps) {
   const { __dirname: serverDir, fullImagePath, decodeBase64Image } = deps;
   await ensureCaptionFonts(serverDir);
+  const butterflyImg = await loadButterfly(serverDir);
 
-  const innerW = POLAROID_OUTER_W - PAD_X * 2;
   const hasFile = Boolean(photo.storageFile);
   let photoImg = null;
   if (hasFile) {
@@ -176,84 +258,62 @@ export async function renderPolaroidPng(photo, deps) {
       ? photo.rotation
       : 0;
 
-  // —— Layout ——
-  let frameH = 0;
-  let canvasH = 0;
-  const canvasW = POLAROID_OUTER_W;
+  // ── Build the card (transparent background, fixed dimensions) ──
+  const card = createCanvas(CARD_W, CARD_H);
+  const ctx = card.getContext('2d');
 
-  const measureCtx = createCanvas(8, 8).getContext('2d');
-
-  if (photoImg) {
-    frameH = Math.max(1, Math.round(innerW * (photoImg.height / photoImg.width)));
-    measureCtx.font = captionFont(FONT_SIZE_HAS_IMAGE);
-    const lineHeight = Math.round(FONT_SIZE_HAS_IMAGE * 1.15);
-    const { height: captionH } = measureCaptionBlock(
-      measureCtx,
-      caption,
-      innerW - 8,
-      lineHeight
-    );
-    canvasH = PAD_TOP + frameH + GAP_IMG_CAPTION + captionH + PAD_BOTTOM;
-  } else {
-    measureCtx.font = captionFont(FONT_SIZE_TEXT_ONLY);
-    const lineHeight = Math.round(FONT_SIZE_TEXT_ONLY * 1.15);
-    const { height: captionH } = measureCaptionBlock(
-      measureCtx,
-      caption,
-      innerW - 16,
-      lineHeight
-    );
-    canvasH =
-      PAD_TOP + CAPTION_ONLY_INNER_PY + captionH + CAPTION_ONLY_INNER_PY + PAD_BOTTOM;
-  }
-
-  const canvas = createCanvas(canvasW, canvasH);
-  const ctx = canvas.getContext('2d');
+  // White rounded card
+  roundRectPath(ctx, 0, 0, CARD_W, CARD_H, CARD_RX);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvasW, canvasH);
+  ctx.fill();
 
-  if (photoImg) {
-    const frameX = PAD_X;
-    const frameY = PAD_TOP;
-    ctx.fillStyle = FRAME_BG;
-    ctx.strokeStyle = FRAME_BORDER;
-    ctx.lineWidth = 2;
-    ctx.fillRect(frameX, frameY, innerW, frameH);
-    ctx.strokeRect(frameX, frameY, innerW, frameH);
-    drawImageFitWidth(ctx, photoImg, frameX, frameY, innerW);
-    if (sigImg) {
-      drawSignatureContain(ctx, sigImg, frameX, frameY, innerW, frameH);
-    }
-    ctx.font = captionFont(FONT_SIZE_HAS_IMAGE);
-    ctx.fillStyle = CAPTION_COLOR;
-    ctx.textBaseline = 'top';
-    const lineHeight = Math.round(FONT_SIZE_HAS_IMAGE * 1.15);
-    const { lines } = measureCaptionBlock(ctx, caption, innerW - 8, lineHeight);
-    let cy = PAD_TOP + frameH + GAP_IMG_CAPTION;
-    const centerX = canvasW / 2;
-    lines.forEach((line) => {
-      const lw = ctx.measureText(line).width;
-      ctx.fillText(line, centerX - lw / 2, cy);
-      cy += lineHeight;
-    });
-  } else {
-    ctx.font = captionFont(FONT_SIZE_TEXT_ONLY);
-    ctx.fillStyle = CAPTION_COLOR;
-    ctx.textBaseline = 'top';
-    const lineHeight = Math.round(FONT_SIZE_TEXT_ONLY * 1.15);
-    const { lines } = measureCaptionBlock(ctx, caption, innerW - 16, lineHeight);
-    let cy = PAD_TOP + CAPTION_ONLY_INNER_PY;
-    const centerX = canvasW / 2;
-    lines.forEach((line) => {
-      const lw = ctx.measureText(line).width;
-      ctx.fillText(line, centerX - lw / 2, cy);
-      cy += lineHeight;
-    });
+  // Butterfly watermark, clipped to the card
+  if (butterflyImg) {
+    ctx.save();
+    roundRectPath(ctx, 0, 0, CARD_W, CARD_H, CARD_RX);
+    ctx.clip();
+    const tinted = tintImage(butterflyImg, WM_COLOR);
+    drawImageContain(ctx, tinted, WM_X, WM_Y, WM_SIZE, WM_SIZE, WM_OPACITY);
+    ctx.restore();
   }
 
-  const rotated =
-    Math.abs(rotation) > 0.05 ? drawRotatedCard(canvas, rotation) : canvas;
-  return rotated.toBuffer('image/png');
+  // Photo + signature, or text-only caption
+  if (photoImg) {
+    ctx.save();
+    roundRectPath(ctx, PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H, PHOTO_RX);
+    ctx.clip();
+    ctx.fillStyle = '#f3f4f6';
+    ctx.fillRect(PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H);
+    drawImageCover(ctx, photoImg, PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H);
+    if (sigImg) {
+      drawSignatureContain(ctx, sigImg, PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H);
+    }
+    ctx.restore();
+
+    drawCaptionCentered(ctx, caption, 0, CAPTION_Y, CARD_W, CAPTION_H, FONT_SIZE_HAS_IMAGE);
+  } else {
+    drawCaptionCentered(
+      ctx,
+      caption,
+      PAD,
+      PAD,
+      CARD_W - PAD * 2,
+      CARD_H - PAD * 2,
+      FONT_SIZE_TEXT_ONLY
+    );
+  }
+
+  // Tape (decorative, top center)
+  ctx.save();
+  ctx.translate(CARD_W / 2, TAPE_Y + TAPE_H / 2);
+  ctx.rotate((TAPE_ROT_DEG * Math.PI) / 180);
+  ctx.globalAlpha = TAPE_OPACITY;
+  ctx.fillStyle = TAPE_COLOR;
+  ctx.fillRect(-TAPE_W / 2, -TAPE_H / 2, TAPE_W, TAPE_H);
+  ctx.restore();
+
+  const out = rotateWithShadow(card, rotation);
+  return out.toBuffer('image/png');
 }
 
 export function canExportPolaroid(photo) {

@@ -90,13 +90,37 @@ async function ensureCaptionFonts(serverDir) {
 }
 
 /** Load /public/butterfly.png once (relative to the server dir). Returns null if missing. */
+/**
+ * Load the butterfly watermark once. Checks several locations so it works
+ * regardless of how the server is deployed:
+ *  - WATERMARK_PATH env override
+ *  - server/assets/butterfly.png (bundled with the server; survives hosts that
+ *    use the `server` dir as an isolated build context, e.g. Railway)
+ *  - ../public/butterfly.png (full-repo checkouts, e.g. local + Render)
+ * Returns null (and warns) if none are found, rather than failing silently.
+ */
 function loadButterfly(serverDir) {
   if (!butterflyImgPromise) {
-    const wmPath = path.join(serverDir, '..', 'public', 'butterfly.png');
-    butterflyImgPromise = fs
-      .readFile(wmPath)
-      .then((buf) => loadImage(buf))
-      .catch(() => null);
+    const candidates = [
+      process.env.WATERMARK_PATH,
+      path.join(serverDir, 'assets', 'butterfly.png'),
+      path.join(serverDir, '..', 'public', 'butterfly.png'),
+    ].filter(Boolean);
+    butterflyImgPromise = (async () => {
+      for (const candidate of candidates) {
+        try {
+          const buf = await fs.readFile(candidate);
+          return await loadImage(buf);
+        } catch {
+          /* try next candidate */
+        }
+      }
+      console.warn(
+        '[polaroidExport] Butterfly watermark not found; exporting without it. Looked in:',
+        candidates
+      );
+      return null;
+    })();
   }
   return butterflyImgPromise;
 }

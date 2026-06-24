@@ -1,431 +1,208 @@
-import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import SignatureCanvas from 'react-signature-canvas';
+import React, { useEffect, useRef, useState } from 'react';
 import { compressImage, savePhoto } from '../services/storageService';
-import { validateCaption } from '../services/geminiService';
 import { PhotoEntry } from '../types';
 import { useToast } from '../context/ToastContext';
+import { CameraBubble, CameraBubbleHandle } from './CameraBubble';
+import { SignableBubble, SignableBubbleHandle } from './SignableBubble';
+
+type Stage = 'camera' | 'review' | 'sending' | 'sent';
 
 const UploadView: React.FC = () => {
-  const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const sigCanvasRef = useRef<SignatureCanvas>(null);
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
-  
-  // Store single base64 string
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [caption, setCaption] = useState('');
-  const [showSignature, setShowSignature] = useState(false);
-  const [signatureColor, setSignatureColor] = useState('black');
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [isUploading, setIsUploading] = useState(false);
-  const [stage, setStage] = useState<'idle' | 'ejecting' | 'spotlight'>('idle');
+  const cameraRef = useRef<CameraBubbleHandle>(null);
+  const signRef = useRef<SignableBubbleHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Measure the canvas container when signature mode is activated
-  React.useEffect(() => {
-    if (showSignature) {
-      // Wait for the DOM to update and render the container
-      // then wait for CSS transitions (like Polaroid scaling) to finish
-      setTimeout(() => {
-        if (canvasContainerRef.current) {
-          const { clientWidth, clientHeight } = canvasContainerRef.current;
-          setCanvasSize({ width: clientWidth, height: clientHeight });
-        }
-      }, 350); // 300ms transition + 50ms buffer
-    } else {
-      setCanvasSize({ width: 0, height: 0 });
+  const [stage, setStage] = useState<Stage>('camera');
+  const [captured, setCaptured] = useState<string | null>(null);
+  const [cameraFailed, setCameraFailed] = useState(false);
+
+  // Responsive bubble size: fits a portrait phone/tablet without overflowing,
+  // leaving room for the controls below.
+  const [diameter, setDiameter] = useState(320);
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      setDiameter(Math.round(Math.max(220, Math.min(w * 0.85, h * 0.55))));
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
+  }, []);
+
+  const handleCameraError = (message: string) => {
+    setCameraFailed(true);
+    showToast(message + ' Tap to use your camera instead.', 'error');
+  };
+
+  const handleShutter = () => {
+    const dataUrl = cameraRef.current?.capture();
+    if (!dataUrl) {
+      showToast('Camera not ready yet — try again.', 'error');
+      return;
     }
-  }, [showSignature]);
+    setCaptured(dataUrl);
+    setStage('review');
+  };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      
+  // Native-capture fallback (insecure context / permission denied / no getUserMedia).
+  const handleFallbackFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
       try {
-        const compressedResult = await compressImage(file);
-        setSelectedImage(compressedResult);
-        setStage('ejecting');
-        
-        // Transition to spotlight after eject animation
-        setTimeout(() => {
-          setStage('spotlight');
-        }, 1200);
-
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Could not process image. Please try another.";
-        console.error("Error processing image", error);
-        showToast(message, "error");
+        const dataUrl = await compressImage(file);
+        setCaptured(dataUrl);
+        setStage('review');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Could not process the photo.';
+        showToast(msg, 'error');
       }
     }
-    // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const removeImage = () => {
-    setSelectedImage(null);
-    setStage('idle');
-    setCaption('');
-    setShowSignature(false);
-    setSignatureColor('black');
-    sigCanvasRef.current?.clear();
+  const handleRetake = () => {
+    setCaptured(null);
+    setStage('camera');
   };
 
-  const handleTextOnly = () => {
-    setSelectedImage(null);
-    setStage('spotlight');
-  };
+  const handleSend = async () => {
+    if (!captured) return;
+    setStage('sending');
 
-  const handleSubmit = async () => {
-    // Require either an image OR a caption
-    if (!selectedImage && !caption.trim()) {
-       showToast("Take a photo or write a note first!", "error");
-       return;
-    }
+    const signature = signRef.current?.getSignature();
+    const newPhoto: PhotoEntry = {
+      id: Date.now().toString(),
+      images: [captured],
+      caption: '',
+      signature,
+      timestamp: Date.now(),
+      rotation: Math.random() * 6 - 3,
+    };
 
-    setIsUploading(true);
-
-    try {
-      // AI Validation
-      if (caption.trim()) {
-        try {
-          const validation = await validateCaption(caption);
-          if (!validation.isValid) {
-            setIsUploading(false);
-            showToast(validation.reason || "This message cannot be posted.", "error");
-            return;
-          }
-        } catch (e) {
-          console.error("Validation error", e);
-          // Continue if validation fails (fail open logic handled in service, but safety catch here)
-        }
-      }
-      
-      let signatureData: string | undefined = undefined;
-      try {
-        if (showSignature && sigCanvasRef.current && !sigCanvasRef.current.isEmpty()) {
-          // Use getCanvas() instead of getTrimmedCanvas() to avoid potential errors
-          // with empty or invalid trimmed bounds
-          signatureData = sigCanvasRef.current.getCanvas().toDataURL('image/png');
-        }
-      } catch (e) {
-        console.error("Error extracting signature:", e);
-      }
-
-      const newPhoto: PhotoEntry = {
-        id: Date.now().toString(),
-        images: selectedImage ? [selectedImage] : [], 
-        caption: caption || (selectedImage ? "Hi everyone!" : "Just saying hi!"),
-        signature: signatureData,
-        timestamp: Date.now(),
-        rotation: Math.random() * 6 - 3,
-      };
-
-      const result = await savePhoto(newPhoto);
-      
-      if (result.success) {
-        setTimeout(() => {
-          setIsUploading(false);
-          setSelectedImage(null);
-          setCaption('');
-          setShowSignature(false);
-          setSignatureColor('black');
-          sigCanvasRef.current?.clear();
-          setStage('idle');
-          showToast("Posted to the wall!", "success");
-        }, 500);
-      } else {
-        setIsUploading(false);
-        showToast(result.error || "Could not save photo. Check connection.", "error");
-      }
-    } catch (error) {
-      console.error("Unhandled error during submit:", error);
-      setIsUploading(false);
-      showToast("An unexpected error occurred.", "error");
+    const result = await savePhoto(newPhoto);
+    if (result.success) {
+      setStage('sent');
+    } else {
+      showToast(result.error || 'Could not send. Check the connection.', 'error');
+      setStage('review');
     }
   };
 
-  const triggerCamera = () => {
-    fileInputRef.current?.click();
+  const handleTakeAnother = () => {
+    setCaptured(null);
+    setCameraFailed(false);
+    setStage('camera');
   };
-
-  const canSubmit = (selectedImage || caption.trim().length > 0) && !isUploading;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-start p-4 relative overflow-x-hidden overflow-y-auto">
-      
-      {/* Background Ambience */}
-      <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 to-zinc-950 opacity-50 pointer-events-none" />
-      
-      {/* Spotlight Overlay */}
-      <div 
-        className={`fixed inset-0 bg-black/60 backdrop-blur-md z-40 transition-all duration-1000 pointer-events-none ${
-          stage === 'spotlight' ? 'opacity-100' : 'opacity-0'
-        }`} 
+    <div className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center justify-center gap-8 px-4 py-[max(1rem,env(safe-area-inset-top))] overflow-hidden relative">
+      {/* Themed background video (same asset as the wall) */}
+      <video
+        className="absolute inset-0 w-full h-full object-cover opacity-60 pointer-events-none"
+        src="/bubbleBG.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden
       />
 
-      <div className={`relative z-10 flex flex-col items-center justify-start pt-12 sm:pt-20 w-full max-w-lg min-h-screen transition-all duration-500 ${stage === 'spotlight' ? 'z-50' : ''}`}>
-        
-        {/* INTRO TEXT - Fades out when not idle */}
-        <div className={`
-           text-center mb-6 transition-all duration-700
-           ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
-        `}>
-           <h2 className="text-4xl font-marker text-white mb-2 tracking-wider transform -rotate-2">
-             Share the Moments!
-           </h2>
-           <p className="text-zinc-400 text-sm max-w-xs mx-auto leading-relaxed">
-             Send a message or upload photos to the digital wall for everyone to see!
-           </p>
-        </div>
+      <div className="relative z-10 flex flex-col items-center gap-8 w-full">
+        {/* Bubble area */}
+        {stage === 'camera' && !cameraFailed && (
+          <CameraBubble ref={cameraRef} diameter={diameter} onError={handleCameraError} />
+        )}
 
-        {/* Text Only Option */}
-        <button
-          onClick={handleTextOnly}
-          className={`
-            mb-8 px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full 
-            text-white/80 hover:text-white font-marker text-xl tracking-wide 
-            transition-all duration-500 hover:scale-105 hover:shadow-lg hover:border-white/30
-            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
-          `}
-        >
-          ✎ Write a Note
-        </button>
+        {stage === 'camera' && cameraFailed && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-center px-6"
+            style={{ width: diameter, height: diameter }}
+          >
+            Tap to open your camera
+          </button>
+        )}
 
-        {/* Camera & Photo Wrapper to keep them anchored together */}
-        <div className="relative w-[320px] flex flex-col items-center">
+        {(stage === 'review' || stage === 'sending') && captured && (
+          <SignableBubble ref={signRef} diameter={diameter} imageDataUrl={captured} />
+        )}
 
-          {/* GUIDANCE HINT - Only visible in idle */}
-          <div className={`
-            absolute -top-14 -right-4 z-40 flex flex-col items-center
-            transition-all duration-700 delay-300
-            ${stage === 'idle' ? 'opacity-0 pointer-events-none' : 'opacity-0 pointer-events-none'}
-          `}>
-            {/* Removed Floating Hint */}
+        {stage === 'sent' && (
+          <div
+            className="rounded-full bg-white/10 border border-white/20 flex flex-col items-center justify-center text-center gap-2 px-6"
+            style={{ width: diameter, height: diameter }}
+          >
+            <span className="text-2xl font-semibold">Sent to the wall!</span>
+            <span className="text-white/70 text-sm">Your bubble is floating now ✨</span>
           </div>
+        )}
 
-          {/* CAMERA BODY */}
-          <div className={`
-              relative w-full bg-[#f3f3f3] rounded-[40px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] pt-8 pb-12 px-6 flex flex-col items-center border-b-8 border-gray-300 z-30 
-              transition-all duration-1000 ease-in-out transform origin-center
-              ${stage === 'spotlight' ? 'scale-90 blur-sm grayscale brightness-50' : 'scale-100 blur-0 grayscale-0 brightness-100'}
-          `}>
-            
-            {/* Top Row: Flash & Viewfinder */}
-            <div className="w-full flex justify-between items-start mb-6 px-2">
-              {/* Flash */}
-              <div className={`
-                w-24 h-12 bg-gray-800 rounded-xl border-2 border-gray-600 relative overflow-hidden
-                ${isUploading ? 'animate-pulse bg-yellow-100/80' : ''}
-              `}>
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent" />
-                <div className="absolute inset-0 grid grid-cols-6 gap-0.5 opacity-30">
-                  {[...Array(12)].map((_, i) => <div key={i} className="bg-white/20 rounded-sm" />)}
-                </div>
-              </div>
-              
-              {/* Viewfinder */}
-              <div className="w-12 h-12 bg-[#1a1a1a] rounded-xl border-2 border-gray-700 flex items-center justify-center">
-                  <div className="w-4 h-4 bg-black/50 rounded-full blur-sm" />
-              </div>
-            </div>
-
-            {/* Main Feature Row */}
-            <div className="relative w-full flex justify-center items-center">
-              
-              {/* Rainbow Stripe */}
-              <div className="absolute left-1/2 -translate-x-1/2 top-full h-16 w-6 flex z-0">
-                <div className="flex-1 bg-[#FF3B30]" /> {/* Red */}
-                <div className="flex-1 bg-[#FF9500]" /> {/* Orange */}
-                <div className="flex-1 bg-[#FFCC00]" /> {/* Yellow */}
-                <div className="flex-1 bg-[#4CD964]" /> {/* Green */}
-                <div className="flex-1 bg-[#5AC8FA]" /> {/* Blue */}
-              </div>
-
-            {/* LENS ASSEMBLY (Trigger) */}
-            <div 
-              onClick={triggerCamera}
-              className="relative w-40 h-40 rounded-full bg-[#1a1a1a] border-[6px] border-[#2a2a2a] flex items-center justify-center cursor-pointer shadow-xl z-10 group active:scale-95 transition-transform"
+        {/* Controls */}
+        {stage === 'camera' && !cameraFailed && (
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => cameraRef.current?.flip()}
+              className="w-14 h-14 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-2xl active:scale-95 transition-transform"
+              aria-label="Flip camera"
             >
-                {/* Outer Ring Animation */}
-                <div className="absolute inset-0 rounded-full border-2 border-white/20 animate-ping opacity-20" />
-
-                {/* Lens Details */}
-                <div className="w-32 h-32 rounded-full bg-black border border-gray-800 flex items-center justify-center relative overflow-hidden">
-                    {/* Reflections */}
-                    <div className="absolute top-6 right-6 w-8 h-4 bg-white/10 rounded-full rotate-45 blur-md opacity-50" />
-                    <div className="absolute bottom-8 left-8 w-4 h-2 bg-white/5 rounded-full rotate-45 blur-sm opacity-50" />
-                    
-                    <div className="w-24 h-24 rounded-full bg-[#0a0a0a] border border-gray-800 flex items-center justify-center opacity-80">
-                      <div className="w-10 h-10 rounded-full bg-[#151515] shadow-inner" />
-                    </div>
-                    
-                    {/* Overlay Text & Icon */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
-                      <span className="text-white text-[10px] font-bold tracking-widest animate-[pulse_0.8s_ease-in-out_infinite]">TAP TO SNAP</span>
-                    </div>
-                </div>
-              </div>
-
-              {/* SHUTTER BUTTON */}
-              <div
-                className={`
-                  absolute right-2 bottom-0 translate-y-1/2
-                  w-16 h-16 rounded-full bg-[#ff3b30] border-[6px] border-white shadow-lg
-                  flex items-center justify-center
-                  z-20 opacity-90
-                `}
-              >
-                  <div className="w-full h-full rounded-full bg-gradient-to-br from-transparent to-black/10" />
-              </div>
-            </div>
-
-          {/* Bottom Slot - Increased Z-index to cover photo during ejection */}
-          <div className="w-[290px] h-4 bg-[#1a1a1a] rounded-lg mt-12 shadow-inner relative z-30 border-b border-zinc-700" />
-
-        </div>
-
-          {/* POLAROID PHOTO (Preview) */}
-          <div className={`
-            absolute top-0 left-0 w-full flex flex-col items-center pointer-events-none
-            transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]
-            ${stage === 'idle' ? 'translate-y-12 opacity-0 z-10 scale-95' : ''}
-            ${stage === 'ejecting' ? 'translate-y-[350px] opacity-100 z-20 scale-100' : ''}
-            ${stage === 'spotlight' ? '-translate-y-4 z-50 scale-100 pointer-events-auto' : ''}
-          `}>
-            {/* Polaroid Card */}
-            <div className={`bg-white p-3 pb-6 shadow-2xl rotate-[-2deg] hover:rotate-0 transition-all duration-300 ${
-              stage === 'spotlight' ? 'w-[310px] sm:w-[350px]' : 'w-[280px]'
-            }`}>
-            {/* Photo Area */}
-            {selectedImage ? (
-            <div className="w-full mb-4 bg-zinc-100 border border-gray-200 flex flex-col items-center justify-center relative overflow-hidden group">
-              {selectedImage && (
-                <>
-                  <img src={selectedImage} alt="Preview" className="w-full h-auto block pointer-events-none" />
-                  
-                  {/* Signature Canvas Over Photo */}
-                  <div 
-                    ref={canvasContainerRef} 
-                    className={`absolute inset-0 z-30 cursor-crosshair ${stage === 'spotlight' && showSignature ? 'block' : 'hidden'}`}
-                  >
-                    {stage === 'spotlight' && showSignature && canvasSize.width > 0 && (
-                      <SignatureCanvas 
-                        ref={sigCanvasRef}
-                        penColor={signatureColor}
-                        canvasProps={{ 
-                          width: canvasSize.width, 
-                          height: canvasSize.height,
-                          className: 'absolute inset-0' 
-                        }}
-                        clearOnResize={false}
-                      />
-                    )}
-                    {/* Loading state while canvas measures */}
-                    {stage === 'spotlight' && showSignature && canvasSize.width === 0 && (
-                       <div className="absolute inset-0 bg-black/5 animate-pulse" />
-                    )}
-                  </div>
-
-                  <button 
-                    onClick={removeImage}
-                    className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-40"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </>
-              )}
-            </div>
-            ) : (
-               // Spacer or specific styling for text-only mode
-               <div className="h-8" /> 
-            )}
-
-              {/* Caption Line */}
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Write a note..."
-                disabled={stage !== 'spotlight'}
-                autoFocus={stage === 'spotlight'}
-                className="w-full bg-transparent border-none focus:ring-0 outline-none text-gray-800 font-marker text-3xl text-center resize-none h-14 leading-tight placeholder:text-gray-300 relative z-40"
-                maxLength={60}
-              />
-
-              {/* Signature Controls */}
-              {stage === 'spotlight' && selectedImage && (
-                <div className="mt-1 flex flex-col items-center relative z-40">
-                  {!showSignature ? (
-                    <button
-                      onClick={() => setShowSignature(true)}
-                      className="text-sm text-gray-400 hover:text-gray-600 underline font-sans"
-                    >
-                      + Add Signature to Photo
-                    </button>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="flex gap-3">
-                        <button 
-                          onClick={() => setSignatureColor('black')}
-                          className={`w-5 h-5 rounded-full bg-black border-2 shadow-sm transition-transform ${signatureColor === 'black' ? 'border-blue-400 scale-110' : 'border-gray-300'}`}
-                          aria-label="Black pen"
-                        />
-                        <button 
-                          onClick={() => setSignatureColor('white')}
-                          className={`w-5 h-5 rounded-full bg-white border-2 shadow-sm transition-transform ${signatureColor === 'white' ? 'border-blue-400 scale-110' : 'border-gray-300'}`}
-                          aria-label="White pen"
-                        />
-                        <button 
-                          onClick={() => setSignatureColor('#FFD700')}
-                          className={`w-5 h-5 rounded-full bg-[#FFD700] border-2 shadow-sm transition-transform ${signatureColor === '#FFD700' ? 'border-blue-400 scale-110' : 'border-gray-300'}`}
-                          aria-label="Gold pen"
-                        />
-                      </div>
-                      <button 
-                        onClick={() => sigCanvasRef.current?.clear()}
-                        className="text-xs text-gray-400 hover:text-gray-600 underline font-sans mt-0.5"
-                      >
-                        Clear Signature
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Submit Button - Only visible in spotlight */}
-            <div className={`
-                mt-4 sm:mt-6 flex gap-3 transition-all duration-500 delay-300
-                ${stage === 'spotlight' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}
-            `}>
-              <button
-                onClick={removeImage}
-                disabled={isUploading}
-                className="px-4 py-2 rounded-full font-bold text-base text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white px-6 py-2 rounded-full font-bold text-base shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                  {isUploading ? 'Posting...' : 'Post to Wall'}
-              </button>
-            </div>
+              ⟲
+            </button>
+            <button
+              onClick={handleShutter}
+              className="w-20 h-20 rounded-full bg-white border-4 border-white/50 active:scale-95 transition-transform"
+              aria-label="Take photo"
+            />
+            <div className="w-14 h-14" /> {/* spacer to keep shutter centered */}
           </div>
-          
-        </div>
-      
+        )}
+
+        {stage === 'review' && (
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleRetake}
+              className="px-6 py-3 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Retake
+            </button>
+            <button
+              onClick={() => signRef.current?.clear()}
+              className="px-6 py-3 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              onClick={handleSend}
+              className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform"
+            >
+              Send to Wall
+            </button>
+          </div>
+        )}
+
+        {stage === 'sending' && (
+          <div className="px-8 py-3 text-white/80">Sending…</div>
+        )}
+
+        {stage === 'sent' && (
+          <button
+            onClick={handleTakeAnother}
+            className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform"
+          >
+            Take another
+          </button>
+        )}
       </div>
 
-      {/* Hidden Input */}
-      <input 
-        type="file" 
-        accept="image/*" 
-        ref={fileInputRef} 
-        onChange={handleFileSelect} 
-        className="hidden" 
+      {/* Hidden native-capture fallback input */}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        ref={fileInputRef}
+        onChange={handleFallbackFile}
+        className="hidden"
       />
     </div>
   );

@@ -258,7 +258,7 @@ const DisplayView: React.FC = () => {
           opacity: videoReady && aVisible ? 1 : 0,
           transitionDuration: `${VIDEO_FADE_MS}ms`,
         }}
-        src="/bubbleBG.mov"
+        src="/bubbleBG.mp4"
         autoPlay
         muted
         playsInline
@@ -275,7 +275,7 @@ const DisplayView: React.FC = () => {
           opacity: videoReady && bVisible ? 1 : 0,
           transitionDuration: `${VIDEO_FADE_MS}ms`,
         }}
-        src="/bubbleBG.mov"
+        src="/bubbleBG.mp4"
         muted
         playsInline
         preload="auto"

@@ -1,5 +1,7 @@
 import React from 'react';
 import { PhotoEntry } from '../types';
+import { BubbleFrame } from './BubbleFrame';
+import { SIGNATURE_BAND_HEIGHT_RATIO } from '../lib/bubbleGeometry';
 
 interface BubbleProps {
   photo: PhotoEntry | null;       // null = empty/placeholder (instructional bubble)
@@ -16,61 +18,42 @@ export const Bubble: React.FC<BubbleProps> = ({
   style = {},
   placeholderText,
 }) => {
-  const photoSize = diameter * 0.78;  // inner photo area (leaves room for glass rim)
-  const photoOffset = (diameter - photoSize) / 2;
-
   const imageUrl = photo
     ? (photo.imageUrl || (photo.images && photo.images[0]) || '')
     : '';
 
+  // Signature band height as a % of the photo circle (the BubbleFrame children box).
+  const bandHeightPct = `${SIGNATURE_BAND_HEIGHT_RATIO * 100}%`;
+
   return (
-    <div
-      className={`relative ${className}`}
-      style={{
-        width: diameter,
-        height: diameter,
-        // Bright outer halo — gives the bubble a "catching light" glow without
-        // the heavy dark shadows that didn't suit the background.
-        filter: 'drop-shadow(0 0 12px rgba(255, 255, 255, 0.25))',
-        ...style,
-      }}
-    >
-      {/* Photo (clipped to circle), only if a photo is provided */}
+    <BubbleFrame diameter={diameter} className={className} style={style}>
+      {/* Photo fills the circle */}
       {imageUrl && (
-        <div
-          className="absolute overflow-hidden rounded-full bg-black/20"
-          style={{
-            width: photoSize,
-            height: photoSize,
-            top: photoOffset,
-            left: photoOffset,
-          }}
-        >
-          <img
-            src={imageUrl}
-            alt=""
-            className="w-full h-full object-cover"
-            draggable={false}
-          />
-          {/* Signature overlay on lower portion */}
-          {photo?.signature && (
-            <img
-              src={photo.signature}
-              alt=""
-              className="absolute left-0 right-0 bottom-0 w-full pointer-events-none"
-              style={{
-                height: '40%',
-                objectFit: 'contain',
-                objectPosition: 'center bottom',
-                filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))',
-              }}
-              draggable={false}
-            />
-          )}
-        </div>
+        <img
+          src={imageUrl}
+          alt=""
+          className="w-full h-full object-cover"
+          draggable={false}
+        />
       )}
 
-      {/* Placeholder text (for empty-state instructional bubble) */}
+      {/* Signature overlay on the lower band */}
+      {imageUrl && photo?.signature && (
+        <img
+          src={photo.signature}
+          alt=""
+          className="absolute left-0 right-0 bottom-0 w-full pointer-events-none"
+          style={{
+            height: bandHeightPct,
+            objectFit: 'contain',
+            objectPosition: 'center bottom',
+            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))',
+          }}
+          draggable={false}
+        />
+      )}
+
+      {/* Placeholder text (empty-state instructional bubble) */}
       {!imageUrl && placeholderText && (
         <div
           className="absolute inset-0 flex items-center justify-center text-center text-white font-semibold px-8"
@@ -79,14 +62,6 @@ export const Bubble: React.FC<BubbleProps> = ({
           {placeholderText}
         </div>
       )}
-
-      {/* Bubble PNG overlay (glass rim & highlights) */}
-      <img
-        src="/bubble.png"
-        alt=""
-        className="absolute inset-0 w-full h-full pointer-events-none select-none"
-        draggable={false}
-      />
-    </div>
+    </BubbleFrame>
   );
 };

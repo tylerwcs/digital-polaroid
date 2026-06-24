@@ -15,8 +15,10 @@ dist-ssr
 # Media
 public/*.mov
 public/*.mp4
-# Wall background (referenced by DisplayView) — allow this one despite public/*.mp4 above
+# Wall background videos referenced by DisplayView — allow these despite public/*.mp4 above
 !public/BG.mp4
+# Bubble-theme variant background video (see docs/BUBBLE_VARIANT.md)
+!public/bubbleBG.mp4
 
 # Editor directories and files
 .vscode/*

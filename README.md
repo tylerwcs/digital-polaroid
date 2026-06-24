@@ -4,6 +4,10 @@
 
 # Run and deploy your AI Studio app
 
+> **Note:** This branch (`claude/admiring-swirles-1b8625`) is the **bubble-theme variant**
+> of the `/wall` display. `main` keeps the original polaroid design. See
+> [`docs/BUBBLE_VARIANT.md`](docs/BUBBLE_VARIANT.md) for what changed and how to continue.
+
 This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1Jwon7IcdiSxeTEk_Z7RliXr-BsgLm8_I

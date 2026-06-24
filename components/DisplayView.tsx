@@ -245,7 +245,11 @@ const DisplayView: React.FC = () => {
       // Outgoing stays opaque underneath; incoming fades 0 -> 1 on top.
       return isActive ? { opacity: 1, zIndex: 0 } : { opacity: 1, zIndex: 1 };
     }
-    return { opacity: isActive ? 1 : 0, zIndex: 0 };
+    // Steady state: the active video sits ON TOP so that the just-swapped
+    // outgoing video (which fades 1 -> 0) always animates out underneath it,
+    // never ghosting over it. (Without this, DOM order alone decides stacking,
+    // which makes B->A transitions show a fading ghost of B's last frame.)
+    return isActive ? { opacity: 1, zIndex: 1 } : { opacity: 0, zIndex: 0 };
   };
   const aLayer = videoLayer('A');
   const bLayer = videoLayer('B');

@@ -235,10 +235,20 @@ const DisplayView: React.FC = () => {
     setCrossfading(false);
   };
 
-  // Visibility math: the "active and not crossfading" video is visible, AND
-  // the "inactive but crossfading" video (the one fading in) is also visible.
-  const aVisible = (activeVideo === 'A' && !crossfading) || (activeVideo === 'B' && crossfading);
-  const bVisible = (activeVideo === 'B' && !crossfading) || (activeVideo === 'A' && crossfading);
+  // Crossfade visibility: only the INCOMING video fades. The outgoing (active)
+  // video stays fully opaque underneath so the static poster never shows through
+  // the 50%-opacity midpoint of a symmetric crossfade.
+  const videoLayer = (which: 'A' | 'B'): { opacity: number; zIndex: number } => {
+    const isActive = activeVideo === which;
+    if (!videoReady) return { opacity: 0, zIndex: 0 };
+    if (crossfading) {
+      // Outgoing stays opaque underneath; incoming fades 0 -> 1 on top.
+      return isActive ? { opacity: 1, zIndex: 0 } : { opacity: 1, zIndex: 1 };
+    }
+    return { opacity: isActive ? 1 : 0, zIndex: 0 };
+  };
+  const aLayer = videoLayer('A');
+  const bLayer = videoLayer('B');
 
   return (
     <div
@@ -255,7 +265,8 @@ const DisplayView: React.FC = () => {
         ref={videoARef}
         className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
         style={{
-          opacity: videoReady && aVisible ? 1 : 0,
+          opacity: aLayer.opacity,
+          zIndex: aLayer.zIndex,
           transitionDuration: `${VIDEO_FADE_MS}ms`,
         }}
         src="/bubbleBG.mp4"
@@ -272,7 +283,8 @@ const DisplayView: React.FC = () => {
         ref={videoBRef}
         className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
         style={{
-          opacity: videoReady && bVisible ? 1 : 0,
+          opacity: bLayer.opacity,
+          zIndex: bLayer.zIndex,
           transitionDuration: `${VIDEO_FADE_MS}ms`,
         }}
         src="/bubbleBG.mp4"

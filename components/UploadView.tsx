@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { compressImage, savePhoto } from '../services/storageService';
 import { PhotoEntry } from '../types';
 import { useToast } from '../context/ToastContext';
+import { BubbleFrame } from './BubbleFrame';
 import { CameraBubble, CameraBubbleHandle } from './CameraBubble';
 import { SignableBubble, SignableBubbleHandle } from './SignableBubble';
 
@@ -116,13 +117,14 @@ const UploadView: React.FC = () => {
         )}
 
         {stage === 'camera' && cameraFailed && (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-center px-6"
-            style={{ width: diameter, height: diameter }}
-          >
-            Tap to open your camera
-          </button>
+          <BubbleFrame diameter={diameter}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full h-full flex items-center justify-center text-center px-6 text-white"
+            >
+              Tap to open your camera
+            </button>
+          </BubbleFrame>
         )}
 
         {(stage === 'review' || stage === 'sending') && captured && (
@@ -130,13 +132,12 @@ const UploadView: React.FC = () => {
         )}
 
         {stage === 'sent' && (
-          <div
-            className="rounded-full bg-white/10 border border-white/20 flex flex-col items-center justify-center text-center gap-2 px-6"
-            style={{ width: diameter, height: diameter }}
-          >
-            <span className="text-2xl font-semibold">Sent to the wall!</span>
-            <span className="text-white/70 text-sm">Your bubble is floating now ✨</span>
-          </div>
+          <BubbleFrame diameter={diameter}>
+            <div className="w-full h-full flex flex-col items-center justify-center text-center gap-2 px-6 text-white">
+              <span className="text-2xl font-semibold">Sent to the wall!</span>
+              <span className="text-white/70 text-sm">Your bubble is floating now ✨</span>
+            </div>
+          </BubbleFrame>
         )}
 
         {/* Controls */}

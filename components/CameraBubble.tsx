@@ -20,6 +20,8 @@ export const CameraBubble = forwardRef<CameraBubbleHandle, CameraBubbleProps>(
     const streamRef = useRef<MediaStream | null>(null);
     const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
     const [restartKey, setRestartKey] = useState(0);   // bump to force a stream restart
+    const onErrorRef = useRef(onError);
+    useEffect(() => { onErrorRef.current = onError; });
 
     const stopStream = () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -33,7 +35,7 @@ export const CameraBubble = forwardRef<CameraBubbleHandle, CameraBubbleProps>(
       const start = async () => {
         stopStream();
         if (!navigator.mediaDevices?.getUserMedia) {
-          onError('Camera not available on this device/browser.');
+          onErrorRef.current('Camera not available on this device/browser.');
           return;
         }
         try {
@@ -52,15 +54,15 @@ export const CameraBubble = forwardRef<CameraBubbleHandle, CameraBubbleProps>(
           }
         } catch (e) {
           const err = e as DOMException;
-          if (err?.name === 'NotAllowedError') onError('Camera permission denied.');
-          else if (err?.name === 'NotFoundError') onError('No camera found on this device.');
-          else onError('Could not start the camera. A secure (HTTPS/localhost) context is required.');
+          if (err?.name === 'NotAllowedError') onErrorRef.current('Camera permission denied.');
+          else if (err?.name === 'NotFoundError') onErrorRef.current('No camera found on this device.');
+          else onErrorRef.current('Could not start the camera. A secure (HTTPS/localhost) context is required.');
         }
       };
 
       start();
       return () => { cancelled = true; stopStream(); };
-    }, [facingMode, restartKey, onError]);
+    }, [facingMode, restartKey]);
 
     // Stop the camera when the tab is hidden; restart when visible again.
     useEffect(() => {

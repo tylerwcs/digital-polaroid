@@ -255,55 +255,51 @@ const DisplayView: React.FC = () => {
   const bLayer = videoLayer('B');
 
   return (
-    <div
-      className="h-screen w-screen overflow-hidden relative text-white bg-black"
-      style={{
-        // Static poster as the initial paint so there's no black flash before the video loads.
-        backgroundImage: "url('/bubblesBG.jpeg')",
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }}
-    >
-      {/* Looping background video — two elements crossfade at each loop seam */}
-      <video
-        ref={videoARef}
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
-        style={{
-          opacity: aLayer.opacity,
-          zIndex: aLayer.zIndex,
-          transitionDuration: `${VIDEO_FADE_MS}ms`,
-        }}
-        src="/bubbleBG.mp4"
-        autoPlay
-        muted
-        playsInline
-        preload="auto"
-        onPlaying={() => setVideoReady(true)}
-        onTimeUpdate={handleVideoTimeUpdate('A')}
-        onEnded={handleVideoEnded('A')}
-        aria-hidden
-      />
-      <video
-        ref={videoBRef}
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
-        style={{
-          opacity: bLayer.opacity,
-          zIndex: bLayer.zIndex,
-          transitionDuration: `${VIDEO_FADE_MS}ms`,
-        }}
-        src="/bubbleBG.mp4"
-        muted
-        playsInline
-        preload="auto"
-        onTimeUpdate={handleVideoTimeUpdate('B')}
-        onEnded={handleVideoEnded('B')}
-        aria-hidden
-      />
+    <div className="h-screen w-screen overflow-hidden relative text-white bg-black">
+      {/* Background video layer — its own isolated stacking context pinned behind
+          everything (z-0). The two videos crossfade for a seamless loop; their
+          internal z-index juggling is contained here and can't rise above the
+          bubbles. No static background image. */}
+      <div className="absolute inset-0 z-0" style={{ isolation: 'isolate' }} aria-hidden>
+        <video
+          ref={videoARef}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
+          style={{
+            opacity: aLayer.opacity,
+            zIndex: aLayer.zIndex,
+            transitionDuration: `${VIDEO_FADE_MS}ms`,
+          }}
+          src="/bubbleBG.mp4"
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          onPlaying={() => setVideoReady(true)}
+          onTimeUpdate={handleVideoTimeUpdate('A')}
+          onEnded={handleVideoEnded('A')}
+        />
+        <video
+          ref={videoBRef}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity ease-in-out"
+          style={{
+            opacity: bLayer.opacity,
+            zIndex: bLayer.zIndex,
+            transitionDuration: `${VIDEO_FADE_MS}ms`,
+          }}
+          src="/bubbleBG.mp4"
+          muted
+          playsInline
+          preload="auto"
+          onTimeUpdate={handleVideoTimeUpdate('B')}
+          onEnded={handleVideoEnded('B')}
+        />
+      </div>
 
-      {/* Bubble wall container (blurs when spotlight active) */}
+      {/* Bubble wall container (blurs when spotlight active) — sits above the
+          background video (z-1), below the spotlight-darken overlay (z-5). */}
       <div
         ref={physics.containerRef}
-        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
+        className={`absolute inset-0 z-[1] transition-all duration-1000 ease-in-out ${
           isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''
         }`}
       >

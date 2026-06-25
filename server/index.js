@@ -8,6 +8,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
 import { renderPolaroidPng, canExportPolaroid } from './polaroidExport.js';
+import os from 'os';
+import { spawn } from 'child_process';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +21,16 @@ const MAX_IMAGE_MB = parseFloat(process.env.MAX_IMAGE_MB || '3');
 const JSON_BODY_LIMIT_MB = parseFloat(process.env.JSON_BODY_LIMIT_MB || '5');
 const SAVE_DEBOUNCE_MS = parseInt(process.env.SAVE_DEBOUNCE_MS || '1000', 10);
 const ENABLE_DISK_CACHE = (process.env.ENABLE_DISK_CACHE || 'false').toLowerCase() === 'true';
+
+const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+const MAX_CONCURRENT_EXPORTS = parseInt(process.env.MAX_CONCURRENT_EXPORTS || '2', 10);
+const EXPORT_BG_PATH = path.resolve(__dirname, '..', 'public', 'exportBG.mp4');
+const BUBBLE_WIDTH = parseInt(process.env.EXPORT_BUBBLE_WIDTH || '760', 10);   // overlay bubble width (px)
+const FLOAT_AMPLITUDE = parseInt(process.env.EXPORT_FLOAT_AMP || '70', 10);    // vertical float (px)
+const FLOAT_PERIOD = parseFloat(process.env.EXPORT_FLOAT_PERIOD || '3.5');     // float cycle (s)
+const EXPORT_DURATION = parseFloat(process.env.EXPORT_DURATION || '8');        // output length (s)
+
+let activeExports = 0;
 
 // Always anchor uploads to this app directory. A relative UPLOAD_DIR env (common on hosts)
 // would otherwise resolve against process.cwd(), which often is not .../server on Render.
@@ -122,6 +135,16 @@ const deleteFileIfExists = async (fileName) => {
   } catch (error) {
     if (error.code !== 'ENOENT') {
       console.error(`Failed to remove file ${fileName}:`, error);
+    }
+  }
+};
+
+const deleteTmp = async (filePath) => {
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error(`Failed to remove temp file ${filePath}:`, error);
     }
   }
 };
@@ -271,6 +294,42 @@ const validatePhotoPayload = (photo) => {
   return null;
 };
 
+// Render the floating-bubble export video. Resolves with the output mp4 path.
+const renderExportVideo = (bubblePngPath, outPath) =>
+  new Promise((resolve, reject) => {
+    const overlayY = `(H-h)/2+${FLOAT_AMPLITUDE}*sin(2*PI*t/${FLOAT_PERIOD})`;
+    const filter =
+      `[1:v]scale=${BUBBLE_WIDTH}:-1[b];` +
+      `[0:v][b]overlay=(W-w)/2:${overlayY}[v]`;
+
+    const args = [
+      '-nostdin',
+      '-y',
+      '-i', EXPORT_BG_PATH,
+      '-loop', '1', '-i', bubblePngPath,
+      '-filter_complex', filter,
+      '-map', '[v]',
+      '-an',
+      '-t', String(EXPORT_DURATION),
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-preset', 'veryfast',
+      '-movflags', '+faststart',
+      outPath,
+    ];
+
+    const proc = spawn(FFMPEG_PATH, args);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (err) => {
+      reject(new Error(`ffmpeg failed to start (${err.message}). Is ffmpeg installed?`));
+    });
+    proc.on('close', (code) => {
+      if (code === 0) resolve(outPath);
+      else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+    });
+  });
+
 // API Routes
 app.get('/api/photos', (req, res) => {
   res.json(photos.map(sanitizePhoto));
@@ -404,6 +463,43 @@ app.get('/api/photos/download-all', async (req, res) => {
   }
 
   await archive.finalize();
+});
+
+app.post('/api/export-video', async (req, res) => {
+  if (activeExports >= MAX_CONCURRENT_EXPORTS) {
+    return res.status(429).json({ error: 'Server is busy. Please retry shortly.' });
+  }
+
+  const { bubblePng, photoId } = req.body || {};
+  const decoded = decodeBase64Image(typeof bubblePng === 'string' ? bubblePng : '');
+  if (!decoded || decoded.mime !== 'image/png') {
+    return res.status(400).json({ error: 'Invalid bubble image' });
+  }
+
+  activeExports += 1;
+  const token = crypto.randomBytes(8).toString('hex');
+  const tmpPng = path.join(os.tmpdir(), `bubble-${token}.png`);
+  const tmpMp4 = path.join(os.tmpdir(), `bubble-${token}.mp4`);
+  const safeId = String(photoId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  try {
+    await fs.writeFile(tmpPng, decoded.buffer);
+    await renderExportVideo(tmpPng, tmpMp4);
+
+    const videoBuffer = await fs.readFile(tmpMp4);
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="bubble-${safeId}.mp4"`);
+    res.send(videoBuffer);
+  } catch (error) {
+    console.error('Export video error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to render the video. Please try again.' });
+    }
+  } finally {
+    await deleteTmp(tmpPng);
+    await deleteTmp(tmpMp4);
+    activeExports = Math.max(activeExports - 1, 0);
+  }
 });
 
 // Socket.IO connection

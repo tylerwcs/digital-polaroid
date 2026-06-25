@@ -20,6 +20,10 @@ public/*.mp4
 # Bubble-theme variant background video (see docs/BUBBLE_VARIANT.md)
 !public/bubbleBG.mp4
 
+# Runtime-uploaded photos (already-tracked sample uploads stay tracked; new ones are ignored)
+server/uploads/*
+!server/uploads/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

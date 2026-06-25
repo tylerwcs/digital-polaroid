@@ -4,6 +4,7 @@ import UploadView from './components/UploadView';
 import DisplayView from './components/DisplayView';
 import DisplayViewGrid from './components/DisplayViewGrid';
 import AdminView from './components/AdminView';
+import DownloadView from './components/DownloadView';
 import { ToastProvider } from './context/ToastContext';
 
 const App: React.FC = () => {
@@ -19,6 +20,8 @@ const App: React.FC = () => {
           <Route path="/wall-6" element={<DisplayViewGrid />} />
           {/* Admin route */}
           <Route path="/admin" element={<AdminView />} />
+          {/* Download page (carousel + video export) */}
+          <Route path="/download" element={<DownloadView />} />
         </Routes>
       </HashRouter>
     </ToastProvider>

@@ -67,6 +67,21 @@
       .animate-pulse-subtle {
         animation: pulseSubtle 3s ease-in-out infinite;
       }
+
+      /* Download carousel: gentle bubble float */
+      @keyframes bubbleFloat {
+        0%, 100% { transform: translateY(-12px); }
+        50%      { transform: translateY(12px); }
+      }
+      .animate-bubble-float {
+        animation: bubbleFloat 3.5s ease-in-out infinite;
+      }
+      .carousel-track {
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+      }
+      .carousel-track::-webkit-scrollbar { display: none; }
+      .carousel-slide { scroll-snap-align: center; }
     </style>
   <script type="importmap">
 {

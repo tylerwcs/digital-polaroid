@@ -19,6 +19,8 @@ public/*.mp4
 !public/BG.mp4
 # Bubble-theme variant background video (see docs/BUBBLE_VARIANT.md)
 !public/bubbleBG.mp4
+# Download-page export background (see docs/superpowers/specs/2026-06-26-bubble-download-design.md)
+!public/exportBG.mp4
 
 # Runtime-uploaded photos (already-tracked sample uploads stay tracked; new ones are ignored)
 server/uploads/*

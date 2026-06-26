@@ -40,7 +40,7 @@ const DownloadView: React.FC = () => {
   const handleDownload = async (photo: PhotoEntry) => {
     setBusyId(photo.id);
     try {
-      const bubblePng = await composeBubbleImage(photo, 800);
+      const bubblePng = await composeBubbleImage(photo, 1000);
       const blob = await requestBubbleVideo(bubblePng, photo.id);
       downloadBlob(blob, `bubble-${photo.id}.mp4`);
       showToast('Saved! Check your downloads.', 'success');

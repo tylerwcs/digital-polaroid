@@ -25,7 +25,11 @@ const ENABLE_DISK_CACHE = (process.env.ENABLE_DISK_CACHE || 'false').toLowerCase
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 const MAX_CONCURRENT_EXPORTS = parseInt(process.env.MAX_CONCURRENT_EXPORTS || '2', 10);
 const EXPORT_BG_PATH = path.resolve(__dirname, '..', 'public', 'exportBG.mp4');
+const EXPORT_MASTHEAD_PATH = path.resolve(__dirname, '..', 'public', 'masthead.png');
+const MASTHEAD_WIDTH = parseInt(process.env.EXPORT_MASTHEAD_WIDTH || '700', 10); // masthead width (px)
+const MASTHEAD_TOP = parseInt(process.env.EXPORT_MASTHEAD_TOP || '120', 10);     // masthead top margin (px)
 const BUBBLE_WIDTH = parseInt(process.env.EXPORT_BUBBLE_WIDTH || '760', 10);   // overlay bubble width (px)
+const BUBBLE_Y_OFFSET = parseInt(process.env.EXPORT_BUBBLE_Y_OFFSET || '140', 10); // push bubble below center (px)
 const FLOAT_AMPLITUDE = parseInt(process.env.EXPORT_FLOAT_AMP || '70', 10);    // vertical float (px)
 const FLOAT_PERIOD = parseFloat(process.env.EXPORT_FLOAT_PERIOD || '3.5');     // float cycle (s)
 const EXPORT_DURATION = parseFloat(process.env.EXPORT_DURATION || '8');        // output length (s)
@@ -297,16 +301,21 @@ const validatePhotoPayload = (photo) => {
 // Render the floating-bubble export video. Resolves with the output mp4 path.
 const renderExportVideo = (bubblePngPath, outPath) =>
   new Promise((resolve, reject) => {
-    const overlayY = `(H-h)/2+${FLOAT_AMPLITUDE}*sin(2*PI*t/${FLOAT_PERIOD})`;
+    // Layout: masthead near the top, bubble slightly below center with a gentle float.
+    // Inputs: [0] background video, [1] bubble PNG, [2] masthead PNG.
+    const overlayY = `(H-h)/2+${BUBBLE_Y_OFFSET}+${FLOAT_AMPLITUDE}*sin(2*PI*t/${FLOAT_PERIOD})`;
     const filter =
+      `[2:v]scale=${MASTHEAD_WIDTH}:-1[m];` +
       `[1:v]scale=${BUBBLE_WIDTH}:-1[b];` +
-      `[0:v][b]overlay=(W-w)/2:${overlayY}[v]`;
+      `[0:v][m]overlay=(W-w)/2:${MASTHEAD_TOP}[s1];` +
+      `[s1][b]overlay=(W-w)/2:${overlayY}[v]`;
 
     const args = [
       '-nostdin',
       '-y',
       '-i', EXPORT_BG_PATH,
       '-loop', '1', '-i', bubblePngPath,
+      '-loop', '1', '-i', EXPORT_MASTHEAD_PATH,
       '-filter_complex', filter,
       '-map', '[v]',
       '-an',

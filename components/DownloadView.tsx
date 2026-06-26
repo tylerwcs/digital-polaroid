@@ -11,6 +11,7 @@ const DownloadView: React.FC = () => {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   // Responsive bubble size (portrait-first).
   const [diameter, setDiameter] = useState(300);
@@ -72,19 +73,21 @@ const DownloadView: React.FC = () => {
         ) : photos.length === 0 ? (
           <p className="text-white/70 text-center px-8">No bubbles yet — check back soon!</p>
         ) : (
-          <BubbleCarousel
-            photos={photos}
-            diameter={diameter}
-            renderActions={(photo) => (
-              <button
-                onClick={() => handleDownload(photo)}
-                disabled={busyId !== null}
-                className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform disabled:opacity-60"
-              >
-                {busyId === photo.id ? 'Creating your video…' : 'Download'}
-              </button>
-            )}
-          />
+          <>
+            {/* Only the bubbles swipe; the Download button is a single shared instance below. */}
+            <BubbleCarousel
+              photos={photos}
+              diameter={diameter}
+              onActiveIndexChange={setActiveIndex}
+            />
+            <button
+              onClick={() => handleDownload(photos[activeIndex])}
+              disabled={busyId !== null}
+              className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform disabled:opacity-60"
+            >
+              {busyId !== null ? 'Creating your video…' : 'Download'}
+            </button>
+          </>
         )}
       </div>
     </div>

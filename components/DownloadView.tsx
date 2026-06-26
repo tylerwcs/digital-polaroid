@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getPhotos } from '../services/storageService';
 import { PhotoEntry } from '../types';
 import { useToast } from '../context/ToastContext';
@@ -12,6 +12,27 @@ const DownloadView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+
+  // iOS Safari blocks muted-video autoplay until a property-level mute + a play()
+  // call (the `autoPlay`/`muted` attributes alone aren't honored). Without this the
+  // background stays blank until the first tap. Set muted via the DOM property and
+  // play imperatively, with a first-gesture fallback if autoplay is still blocked.
+  const bgVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = bgVideoRef.current;
+    if (!v) return;
+    v.muted = true;
+    v.playsInline = true;
+    const tryPlay = () => { v.play().catch(() => { /* blocked until a gesture */ }); };
+    tryPlay();
+    const onGesture = () => tryPlay();
+    document.addEventListener('touchstart', onGesture, { once: true, passive: true });
+    document.addEventListener('click', onGesture, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', onGesture);
+      document.removeEventListener('click', onGesture);
+    };
+  }, []);
 
   // Responsive bubble size (portrait-first).
   const [diameter, setDiameter] = useState(300);
@@ -56,12 +77,14 @@ const DownloadView: React.FC = () => {
     <div className="min-h-[100dvh] w-screen bg-black text-white relative overflow-hidden flex flex-col items-center justify-center py-[max(1rem,env(safe-area-inset-top))]">
       {/* Export background, shared behind the carousel */}
       <video
+        ref={bgVideoRef}
         className="absolute inset-0 w-full h-full object-cover opacity-50 pointer-events-none"
         src="/exportBG.mp4"
         autoPlay
         muted
         loop
         playsInline
+        preload="auto"
         aria-hidden
       />
 

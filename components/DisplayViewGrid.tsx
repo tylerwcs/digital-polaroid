@@ -84,24 +84,14 @@ const MarqueeColumn: React.FC<{
       
       const ro = new ResizeObserver(() => {
          if (!containerRef.current) return;
-         
-         const newHeight = containerRef.current.scrollHeight;
-         const oldHeight = lastHeight.current;
-         const currentRepeat = repeatCountRef.current;
-         
-         // Check if height changed significantly
-         if (oldHeight > 0 && Math.abs(newHeight - oldHeight) > 1) {
-             const oldSingle = oldHeight / currentRepeat;
-             const newSingle = newHeight / currentRepeat;
-             
-             // Adjust position to maintain visual consistency
-             if (oldSingle > 0) {
-                const ratio = newSingle / oldSingle;
-                yPos.current = yPos.current * ratio;
-             }
-         }
-         
-         lastHeight.current = newHeight;
+
+         // New photos are appended to the END of each repeated set, so content
+         // already on screen (top-aligned) doesn't move. We only need to update
+         // the measured height; the animation loop recomputes the wrap point
+         // (singleSetHeight) from it. Previously we scaled yPos by the height
+         // ratio here, which yanked the whole column at the instant a photo was
+         // added and made the pop-in look janky. Keeping yPos stable = smooth.
+         lastHeight.current = containerRef.current.scrollHeight;
       });
       
       ro.observe(containerRef.current);

@@ -61,12 +61,14 @@
 
       /* Pop-in for newly arriving polaroids */
       @keyframes popIn {
-        0%   { opacity: 0; transform: scale(0.2); }
-        60%  { opacity: 1; transform: scale(1.08); }
+        0%   { opacity: 0; transform: scale(0.6); }
         100% { opacity: 1; transform: scale(1); }
       }
       .animate-pop-in {
-        animation: popIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+        /* Overshoot easing gives a gentle pop past 1.0 then settles, driven by
+           GPU-composited transform + opacity only (no layout thrash). */
+        animation: popIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        transform-origin: center;
         will-change: transform, opacity;
       }
 

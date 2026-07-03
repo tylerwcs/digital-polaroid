@@ -420,10 +420,13 @@ app.get('/api/photos/download-all', async (req, res) => {
 });
 
 // SPA fallback: serve index.html for client-side routes (e.g. /wall-6) so a
-// direct visit or refresh works. Registered after all API routes; skips API
-// and uploads paths so those still 404 correctly when not found.
+// direct visit or refresh works. Implemented as middleware (not a `*` route) so
+// it works across Express 4/5 without relying on path-to-regexp wildcard syntax.
+// Registered after all API routes; skips non-GET, API and uploads paths so those
+// still behave/404 correctly.
 if (SERVE_FRONTEND) {
-  app.get('*', (req, res, next) => {
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
     if (req.path.startsWith('/api') || req.path.startsWith(UPLOAD_URL_BASE)) {
       return next();
     }

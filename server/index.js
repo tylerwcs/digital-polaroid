@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
@@ -55,6 +56,11 @@ const io = new Server(httpServer, {
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'photos.json');
 
+// Built frontend (vite build output). Present in production single-service
+// deploys (e.g. Railway); absent in local dev where Vite serves the app.
+const DIST_DIR = path.resolve(__dirname, '..', 'dist');
+const SERVE_FRONTEND = existsSync(path.join(DIST_DIR, 'index.html'));
+
 app.use(cors());
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use(UPLOAD_URL_BASE, express.static(UPLOAD_DIR, {
@@ -72,6 +78,13 @@ app.get(`${UPLOAD_URL_BASE}/:fileName`, (req, res, next) => {
     if (err) next(err);
   });
 });
+
+// Serve the built frontend (single-service deploys). API and uploads routes are
+// registered above/below and take precedence; the SPA fallback is added last.
+if (SERVE_FRONTEND) {
+  app.use(express.static(DIST_DIR));
+  console.log(`[snapwall] Serving frontend from ${DIST_DIR}`);
+}
 
 // In-memory cache
 let photos = [];
@@ -405,6 +418,18 @@ app.get('/api/photos/download-all', async (req, res) => {
 
   await archive.finalize();
 });
+
+// SPA fallback: serve index.html for client-side routes (e.g. /wall-6) so a
+// direct visit or refresh works. Registered after all API routes; skips API
+// and uploads paths so those still 404 correctly when not found.
+if (SERVE_FRONTEND) {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith(UPLOAD_URL_BASE)) {
+      return next();
+    }
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+}
 
 // Socket.IO connection
 io.on('connection', (socket) => {

@@ -170,18 +170,40 @@ const DisplayViewGrid: React.FC = () => {
     // When new photos arrive via WebSocket, add them to the END of the list
     // to prevent existing items from shuffling columns.
     const unsubscribe = subscribeToUpdates((newPhoto) => {
-      setPhotos((prev) => [...prev, newPhoto]);
+      // Append the photo and trigger its pop-in. We do this only AFTER the image
+      // has loaded so the polaroid pops in fully rendered — otherwise the white
+      // card appears first and the photo fills in a beat later (and the card can
+      // resize as the image sets its height), which looks janky.
+      let revealed = false;
+      const reveal = () => {
+        if (revealed) return;
+        revealed = true;
 
-      // Flag this photo as new so it pops in, then clear the flag
-      // once the animation has finished.
-      setNewIds((prev) => new Set(prev).add(newPhoto.id));
-      setTimeout(() => {
-        setNewIds((prev) => {
-          const next = new Set(prev);
-          next.delete(newPhoto.id);
-          return next;
-        });
-      }, 800);
+        setPhotos((prev) => [...prev, newPhoto]);
+
+        // Flag this photo as new so it pops in, then clear the flag once the
+        // animation has finished.
+        setNewIds((prev) => new Set(prev).add(newPhoto.id));
+        setTimeout(() => {
+          setNewIds((prev) => {
+            const next = new Set(prev);
+            next.delete(newPhoto.id);
+            return next;
+          });
+        }, 800);
+      };
+
+      const src = newPhoto.imageUrl || (newPhoto.images && newPhoto.images[0]);
+      if (src) {
+        const img = new Image();
+        img.onload = reveal;
+        img.onerror = reveal; // show it anyway if the image fails
+        img.src = src;
+        // Safety net: reveal even if load/error events never fire.
+        setTimeout(reveal, 3000);
+      } else {
+        reveal();
+      }
     });
 
     // Handle deletions

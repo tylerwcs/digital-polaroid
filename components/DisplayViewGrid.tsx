@@ -10,11 +10,12 @@ import { Polaroid } from './Polaroid';
  * Handles seamless infinite scrolling using requestAnimationFrame and manual translation.
  * This approach avoids CSS animation glitches when content height changes dynamically (e.g. adding new photos).
  */
-const MarqueeColumn: React.FC<{ 
-  photos: PhotoEntry[], 
-  speed?: number, 
-  delay?: number 
-}> = ({ photos, speed = 0.5, delay = 0 }) => {
+const MarqueeColumn: React.FC<{
+  photos: PhotoEntry[],
+  speed?: number,
+  delay?: number,
+  newIds?: Set<string>
+}> = ({ photos, speed = 0.5, delay = 0, newIds }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const yPos = useRef(0);
   const reqId = useRef<number>();
@@ -114,9 +115,9 @@ const MarqueeColumn: React.FC<{
       <div ref={containerRef} className="w-full flex flex-col">
         {Array.from({ length: repeatCount }).map((_, setIndex) => (
            photos.map((photo, index) => (
-            <div 
-              key={`${setIndex}-${photo.id}-${index}`} 
-              className="w-full flex justify-center mb-12"
+            <div
+              key={`${setIndex}-${photo.id}-${index}`}
+              className={`w-full flex justify-center mb-12${newIds?.has(photo.id) ? ' animate-pop-in' : ''}`}
             >
                 <Polaroid 
                   photo={photo} 
@@ -135,6 +136,8 @@ const DisplayViewGrid: React.FC = () => {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [numCols, setNumCols] = useState(6);
   const [uploadUrl, setUploadUrl] = useState<string>('');
+  // IDs of photos that just arrived, so they can play the pop-in animation once.
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -178,6 +181,17 @@ const DisplayViewGrid: React.FC = () => {
     // to prevent existing items from shuffling columns.
     const unsubscribe = subscribeToUpdates((newPhoto) => {
       setPhotos((prev) => [...prev, newPhoto]);
+
+      // Flag this photo as new so it pops in, then clear the flag
+      // once the animation has finished.
+      setNewIds((prev) => new Set(prev).add(newPhoto.id));
+      setTimeout(() => {
+        setNewIds((prev) => {
+          const next = new Set(prev);
+          next.delete(newPhoto.id);
+          return next;
+        });
+      }, 800);
     });
 
     // Handle deletions
@@ -213,10 +227,7 @@ const DisplayViewGrid: React.FC = () => {
           playsInline
           aria-hidden
         >
-          <source
-            src="/dynamic-orange-and-yellow-swirling-gradient-backgr-2026-01-28-05-20-19-utc.mp4"
-            type="video/mp4"
-          />
+          <source src="/generali-bg.mp4" type="video/mp4" />
         </video>
 
         <main 

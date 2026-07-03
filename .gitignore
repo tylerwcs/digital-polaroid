@@ -17,6 +17,8 @@ public/*.mov
 public/*.mp4
 # Wall background (referenced by DisplayView) — allow this one despite public/*.mp4 above
 !public/BG.mp4
+# Wall-6 background (referenced by DisplayViewGrid) — allow despite public/*.mp4 above
+!public/generali-bg.mp4
 
 # Editor directories and files
 .vscode/*

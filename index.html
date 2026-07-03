@@ -59,6 +59,17 @@
         animation-play-state: paused;
       }
 
+      /* Pop-in for newly arriving polaroids */
+      @keyframes popIn {
+        0%   { opacity: 0; transform: scale(0.2); }
+        60%  { opacity: 1; transform: scale(1.08); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      .animate-pop-in {
+        animation: popIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+        will-change: transform, opacity;
+      }
+
       /* Subtle Pulse for Camera Lens */
       @keyframes pulseSubtle {
         0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 255, 255, 0); }

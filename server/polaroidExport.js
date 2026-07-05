@@ -1,6 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { createRequire } from 'module';
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
+
+const require = createRequire(import.meta.url);
 
 /** ~max-w-[280px] on wall, 2x for export */
 const POLAROID_OUTER_W = 560;
@@ -23,38 +26,42 @@ const captionFont = (sizePx) =>
 
 let captionFontsRegistered = false;
 
+/**
+ * Locate a @fontsource woff2 file. The fonts may be installed in the root
+ * node_modules (Railway single-service install) OR in server/node_modules
+ * (local `cd server && npm install`), so try node resolution first and fall
+ * back to explicit locations. Returns the first path that exists, or null.
+ */
+async function findFontFile(serverDir, pkg, file) {
+  const candidates = [];
+  try {
+    // Node resolution — finds it in root/server/hoisted node_modules alike.
+    candidates.push(path.join(path.dirname(require.resolve(`${pkg}/package.json`)), 'files', file));
+  } catch { /* package.json not resolvable via exports; use explicit paths */ }
+  candidates.push(path.join(serverDir, 'node_modules', pkg, 'files', file));       // server install
+  candidates.push(path.join(serverDir, '..', 'node_modules', pkg, 'files', file));  // root install
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
 async function ensureCaptionFonts(serverDir) {
   if (captionFontsRegistered) return;
-  const caveatPath = path.join(
-    serverDir,
-    'node_modules',
-    '@fontsource',
-    'caveat',
-    'files',
-    'caveat-latin-700-normal.woff2'
-  );
-  const emojiPath = path.join(
-    serverDir,
-    'node_modules',
-    '@fontsource',
-    'noto-color-emoji',
-    'files',
-    'noto-color-emoji-emoji-400-normal.woff2'
-  );
-  try {
-    await fs.access(caveatPath);
-  } catch {
-    throw new Error(
-      'Caveat font not found. Run npm install in the server directory (needs @fontsource/caveat).'
-    );
+
+  const caveatPath = await findFontFile(serverDir, '@fontsource/caveat', 'caveat-latin-700-normal.woff2');
+  if (!caveatPath) {
+    throw new Error('Caveat font not found (needs @fontsource/caveat installed).');
   }
-  try {
-    await fs.access(emojiPath);
-  } catch {
-    throw new Error(
-      'Emoji font not found. Run npm install in the server directory (needs @fontsource/noto-color-emoji).'
-    );
+  const emojiPath = await findFontFile(serverDir, '@fontsource/noto-color-emoji', 'noto-color-emoji-emoji-400-normal.woff2');
+  if (!emojiPath) {
+    throw new Error('Emoji font not found (needs @fontsource/noto-color-emoji installed).');
   }
+
   if (!GlobalFonts.registerFromPath(caveatPath, FONT_FAMILY)) {
     throw new Error(`Failed to register Caveat from ${caveatPath}`);
   }

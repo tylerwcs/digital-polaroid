@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/caveat": "^5.2.8",
+    "@fontsource/noto-color-emoji": "^5.2.12",
     "@google/genai": "^1.30.0",
     "@napi-rs/canvas": "^1.0.2",
     "archiver": "^7.0.1",

@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
 import { renderPolaroidPng, canExportPolaroid } from './polaroidExport.js';
+import { captionModerationError } from './moderation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -307,6 +308,12 @@ app.post('/api/photos', async (req, res) => {
     
     if (validationError) {
       return res.status(400).json({ error: validationError });
+    }
+
+    // Authoritative profanity check (cannot be bypassed by direct API calls).
+    const moderationError = captionModerationError(incomingPhoto.caption);
+    if (moderationError) {
+      return res.status(400).json({ error: moderationError });
     }
 
     const images = Array.isArray(incomingPhoto.images) ? incomingPhoto.images : [];

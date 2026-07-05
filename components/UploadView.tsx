@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
 import { compressImage, savePhoto } from '../services/storageService';
-import { validateCaption } from '../services/geminiService';
+import { validateCaption } from '../services/moderationService';
 import { PhotoEntry } from '../types';
 import { useToast } from '../context/ToastContext';
 
@@ -86,18 +86,13 @@ const UploadView: React.FC = () => {
     setIsUploading(true);
 
     try {
-      // AI Validation
+      // Profanity check (instant client-side feedback; the server re-checks authoritatively).
       if (caption.trim()) {
-        try {
-          const validation = await validateCaption(caption);
-          if (!validation.isValid) {
-            setIsUploading(false);
-            showToast(validation.reason || "This message cannot be posted.", "error");
-            return;
-          }
-        } catch (e) {
-          console.error("Validation error", e);
-          // Continue if validation fails (fail open logic handled in service, but safety catch here)
+        const validation = validateCaption(caption);
+        if (!validation.isValid) {
+          setIsUploading(false);
+          showToast(validation.reason || "This message cannot be posted.", "error");
+          return;
         }
       }
       
@@ -206,7 +201,7 @@ const UploadView: React.FC = () => {
 
           {/* CAMERA BODY */}
           <div className={`
-              relative w-full bg-[#f3f3f3] rounded-[40px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] pt-8 pb-12 px-6 flex flex-col items-center border-b-8 border-gray-300 z-30 
+              relative w-full bg-[#f3f3f3] rounded-[40px] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.5)] pt-8 pb-4 px-6 flex flex-col items-center border-b-8 border-gray-300 z-30
               transition-all duration-1000 ease-in-out transform origin-center
               ${stage === 'spotlight' ? 'scale-90 blur-sm grayscale brightness-50' : 'scale-100 blur-0 grayscale-0 brightness-100'}
           `}>
@@ -290,16 +285,27 @@ const UploadView: React.FC = () => {
             absolute top-0 left-0 w-full flex flex-col items-center pointer-events-none
             transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]
             ${stage === 'idle' ? 'translate-y-12 opacity-0 z-10 scale-95' : ''}
-            ${stage === 'ejecting' ? 'translate-y-[350px] opacity-100 z-20 scale-100' : ''}
+            ${stage === 'ejecting' ? 'translate-y-[340px] opacity-100 z-20 scale-100' : ''}
             ${stage === 'spotlight' ? '-translate-y-4 z-50 scale-100 pointer-events-auto' : ''}
           `}>
             {/* Polaroid Card */}
-            <div className={`bg-white p-3 pb-6 shadow-2xl rotate-[-2deg] hover:rotate-0 transition-all duration-300 ${
+            <div className={`relative bg-white rounded-[10px] p-3 pb-6 shadow-2xl rotate-[-2deg] hover:rotate-0 transition-all duration-300 ${
               stage === 'spotlight' ? 'w-[310px] sm:w-[350px]' : 'w-[280px]'
             }`}>
+            {/* Decorative washi tape, straddling the top edge */}
+            <div
+              aria-hidden="true"
+              className="absolute left-1/2 -top-2 -translate-x-1/2 -rotate-3 w-20 h-6 rounded-[2px] pointer-events-none"
+              style={{
+                backgroundColor: 'rgba(216, 207, 191, 0.6)',
+                backgroundImage:
+                  'linear-gradient(105deg, rgba(255,255,255,0.25), rgba(255,255,255,0) 45%, rgba(0,0,0,0.06))',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.12)',
+              }}
+            />
             {/* Photo Area */}
             {selectedImage ? (
-            <div className="w-full mb-4 bg-zinc-100 border border-gray-200 flex flex-col items-center justify-center relative overflow-hidden group">
+            <div className="w-full mb-4 bg-zinc-100 border border-gray-200 rounded-[4px] flex flex-col items-center justify-center relative overflow-hidden group">
               {selectedImage && (
                 <>
                   <img src={selectedImage} alt="Preview" className="w-full h-auto block pointer-events-none" />

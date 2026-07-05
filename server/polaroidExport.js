@@ -20,6 +20,17 @@ const FONT_SIZE_HAS_IMAGE = 60; // ~ text-3xl * 2
 const FONT_SIZE_TEXT_ONLY = 72; // ~ text-4xl * 2
 const CAPTION_ONLY_INNER_PY = 64; // py-8 * 2
 
+// —— Rounded card + washi tape (mirrors components/Polaroid.tsx, at 2x) ——
+const CARD_MARGIN = 20;   // transparent breathing room for tape overhang, shadow & rotation
+const CARD_RADIUS = 20;   // ~ rounded-[10px] * 2
+const PHOTO_RADIUS = 8;   // ~ rounded-[4px] * 2
+const TAPE_W = 160;       // ~ w-20 * 2
+const TAPE_H = 48;        // ~ h-6 * 2
+const TAPE_RADIUS = 4;
+const TAPE_OVERHANG = 14; // how far the tape rises above the card's top edge
+const TAPE_ROTATION_DEG = -3;
+const TAPE_FILL = 'rgba(216, 207, 191, 0.6)';
+
 /** Caveat for marker text + Noto Color Emoji so captions match the browser (emoji fallback). */
 const captionFont = (sizePx) =>
   `700 ${sizePx}px ${FONT_FAMILY}, "${EMOJI_FONT_FAMILY}"`;
@@ -134,12 +145,40 @@ function drawRotatedCard(sourceCanvas, rotationDeg) {
   const outH = Math.ceil(w * sin + h * cos);
   const out = createCanvas(outW, outH);
   const octx = out.getContext('2d');
-  octx.fillStyle = '#ffffff';
-  octx.fillRect(0, 0, outW, outH);
+  // Transparent background so the rounded corners / margins stay clear.
   octx.translate(outW / 2, outH / 2);
   octx.rotate(rad);
   octx.drawImage(sourceCanvas, -w / 2, -h / 2);
   return out;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+// Decorative washi tape, rotated slightly and centered on (cx, topY).
+function drawTape(ctx, cx, topY) {
+  ctx.save();
+  ctx.translate(cx, topY + TAPE_H / 2);
+  ctx.rotate((TAPE_ROTATION_DEG * Math.PI) / 180);
+  roundRectPath(ctx, -TAPE_W / 2, -TAPE_H / 2, TAPE_W, TAPE_H, TAPE_RADIUS);
+  ctx.fillStyle = TAPE_FILL;
+  ctx.fill();
+  // Soft sheen so the flat strip reads as tape.
+  const sheen = ctx.createLinearGradient(-TAPE_W / 2, 0, TAPE_W / 2, 0);
+  sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
+  sheen.addColorStop(0.45, 'rgba(255,255,255,0)');
+  sheen.addColorStop(1, 'rgba(0,0,0,0.06)');
+  ctx.fillStyle = sheen;
+  ctx.fill();
+  ctx.restore();
 }
 
 /**
@@ -185,8 +224,8 @@ export async function renderPolaroidPng(photo, deps) {
 
   // —— Layout ——
   let frameH = 0;
-  let canvasH = 0;
-  const canvasW = POLAROID_OUTER_W;
+  let cardH = 0;
+  const cardW = POLAROID_OUTER_W;
 
   const measureCtx = createCanvas(8, 8).getContext('2d');
 
@@ -200,7 +239,7 @@ export async function renderPolaroidPng(photo, deps) {
       innerW - 8,
       lineHeight
     );
-    canvasH = PAD_TOP + frameH + GAP_IMG_CAPTION + captionH + PAD_BOTTOM;
+    cardH = PAD_TOP + frameH + GAP_IMG_CAPTION + captionH + PAD_BOTTOM;
   } else {
     measureCtx.font = captionFont(FONT_SIZE_TEXT_ONLY);
     const lineHeight = Math.round(FONT_SIZE_TEXT_ONLY * 1.15);
@@ -210,34 +249,56 @@ export async function renderPolaroidPng(photo, deps) {
       innerW - 16,
       lineHeight
     );
-    canvasH =
+    cardH =
       PAD_TOP + CAPTION_ONLY_INNER_PY + captionH + CAPTION_ONLY_INNER_PY + PAD_BOTTOM;
   }
 
+  const cardX = CARD_MARGIN;
+  const cardY = CARD_MARGIN;
+  const canvasW = cardW + CARD_MARGIN * 2;
+  const canvasH = cardH + CARD_MARGIN * 2;
+
   const canvas = createCanvas(canvasW, canvasH);
   const ctx = canvas.getContext('2d');
+
+  // Rounded white card with a soft drop shadow (transparent outside the corners).
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.18)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 5;
+  roundRectPath(ctx, cardX, cardY, cardW, cardH, CARD_RADIUS);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvasW, canvasH);
+  ctx.fill();
+  ctx.restore();
 
   if (photoImg) {
-    const frameX = PAD_X;
-    const frameY = PAD_TOP;
+    const frameX = cardX + PAD_X;
+    const frameY = cardY + PAD_TOP;
+    // Rounded photo frame — clip so the image corners round too.
+    ctx.save();
+    roundRectPath(ctx, frameX, frameY, innerW, frameH, PHOTO_RADIUS);
+    ctx.clip();
     ctx.fillStyle = FRAME_BG;
-    ctx.strokeStyle = FRAME_BORDER;
-    ctx.lineWidth = 2;
     ctx.fillRect(frameX, frameY, innerW, frameH);
-    ctx.strokeRect(frameX, frameY, innerW, frameH);
     drawImageFitWidth(ctx, photoImg, frameX, frameY, innerW);
     if (sigImg) {
       drawSignatureContain(ctx, sigImg, frameX, frameY, innerW, frameH);
     }
+    ctx.restore();
+    // Border on top of the clipped image.
+    roundRectPath(ctx, frameX, frameY, innerW, frameH, PHOTO_RADIUS);
+    ctx.strokeStyle = FRAME_BORDER;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
     ctx.font = captionFont(FONT_SIZE_HAS_IMAGE);
     ctx.fillStyle = CAPTION_COLOR;
     ctx.textBaseline = 'top';
     const lineHeight = Math.round(FONT_SIZE_HAS_IMAGE * 1.15);
     const { lines } = measureCaptionBlock(ctx, caption, innerW - 8, lineHeight);
-    let cy = PAD_TOP + frameH + GAP_IMG_CAPTION;
-    const centerX = canvasW / 2;
+    let cy = cardY + PAD_TOP + frameH + GAP_IMG_CAPTION;
+    const centerX = cardX + cardW / 2;
     lines.forEach((line) => {
       const lw = ctx.measureText(line).width;
       ctx.fillText(line, centerX - lw / 2, cy);
@@ -249,14 +310,17 @@ export async function renderPolaroidPng(photo, deps) {
     ctx.textBaseline = 'top';
     const lineHeight = Math.round(FONT_SIZE_TEXT_ONLY * 1.15);
     const { lines } = measureCaptionBlock(ctx, caption, innerW - 16, lineHeight);
-    let cy = PAD_TOP + CAPTION_ONLY_INNER_PY;
-    const centerX = canvasW / 2;
+    let cy = cardY + PAD_TOP + CAPTION_ONLY_INNER_PY;
+    const centerX = cardX + cardW / 2;
     lines.forEach((line) => {
       const lw = ctx.measureText(line).width;
       ctx.fillText(line, centerX - lw / 2, cy);
       cy += lineHeight;
     });
   }
+
+  // Decorative washi tape straddling the card's top edge.
+  drawTape(ctx, cardX + cardW / 2, cardY - TAPE_OVERHANG);
 
   const rotated =
     Math.abs(rotation) > 0.05 ? drawRotatedCard(canvas, rotation) : canvas;

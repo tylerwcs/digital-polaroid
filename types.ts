@@ -9,7 +9,3 @@ export interface PhotoEntry {
   signature?: string; // Optional base64 signature
   rotation: number; // Random rotation for visual interest
 }
-
-export interface GeminiResponse {
-  caption: string;
-}

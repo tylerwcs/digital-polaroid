@@ -14,10 +14,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/1Jwon7IcdiSxeTEk_Z7RliX
 
 1. Install dependencies:  
    `npm install`
-2. Create a `.env.local` file in the project root and add your Gemini key:  
-   `VITE_GEMINI_API_KEY=your_api_key_here`
-3. Run the app:  
+2. Run the app:  
    `npm run dev`
+
+Caption moderation runs locally via a profanity filter ([`obscenity`](https://www.npmjs.com/package/obscenity)) — no API key required.
 
 ## Deploying to Render (recommended)
 
@@ -35,5 +35,4 @@ View your app in AI Studio: https://ai.studio/apps/drive/1Jwon7IcdiSxeTEk_Z7RliX
   - Publish directory: `dist`  
   - Environment variables:
     - `VITE_API_URL=https://snapwall-backend.onrender.com` (replace with your backend URL)  
-    - `VITE_GEMINI_API_KEY=your_api_key_here`  
     - Optional: `VITE_UPLOAD_URL=https://snapwall.onrender.com` (or whatever URL you want encoded in the QR code).

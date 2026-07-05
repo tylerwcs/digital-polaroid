@@ -54,7 +54,11 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'photos.json');
+// Photo metadata store. Keep it next to UPLOAD_DIR so it lands on the same
+// persistent volume as the images (its parent dir, so it isn't served under
+// /uploads). Falls back to the app dir locally when no volume is configured.
+const DATA_FILE = process.env.PHOTOS_DATA_FILE
+  || path.join(path.dirname(UPLOAD_DIR), 'photos.json');
 
 // Built frontend (vite build output). Present in production single-service
 // deploys (e.g. Railway); absent in local dev where Vite serves the app.

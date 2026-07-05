@@ -1,5 +1,6 @@
 import React from 'react';
 import { PhotoEntry } from '../types';
+import { pickWatermarkColor } from '../shared/watermark.js';
 
 interface PolaroidProps {
   photo: PhotoEntry;
@@ -21,6 +22,9 @@ export const Polaroid: React.FC<PolaroidProps> = ({
 
   const isSmall = size === 'small';
 
+  // Deterministic per-photo watercolour wash colour (matches the PNG export).
+  const watermarkColor = pickWatermarkColor(photo.id);
+
   // Size-based classes
   const containerPadding = isSmall ? 'p-2 pb-6' : 'p-3 pb-12';
   const textSize = isSmall
@@ -37,6 +41,23 @@ export const Polaroid: React.FC<PolaroidProps> = ({
         transform: `rotate(${photo.rotation}deg)`,
       }}
     >
+      {/* Subtle watercolour wash — tinted texture masked behind photo + caption */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 z-0 rounded-[10px] overflow-hidden pointer-events-none"
+        style={{
+          backgroundColor: watermarkColor,
+          opacity: 0.12,
+          WebkitMaskImage: 'url(/watermark-watercolour.png)',
+          maskImage: 'url(/watermark-watercolour.png)',
+          WebkitMaskSize: '100% 100%',
+          maskSize: '100% 100%',
+          WebkitMaskRepeat: 'no-repeat',
+          maskRepeat: 'no-repeat',
+          maskMode: 'alpha',
+        }}
+      />
+
       {/* Decorative washi tape, straddling the top edge */}
       <div
         aria-hidden="true"
@@ -55,7 +76,7 @@ export const Polaroid: React.FC<PolaroidProps> = ({
         Only render if an image exists.
       */}
       {currentImage && (
-        <div className="w-full mb-4 bg-gray-100 border border-gray-200 rounded-[4px] overflow-hidden relative">
+        <div className="w-full mb-4 bg-gray-100 border border-gray-200 rounded-[4px] overflow-hidden relative z-10">
           <img
             src={currentImage}
             alt={photo.caption}
@@ -75,7 +96,7 @@ export const Polaroid: React.FC<PolaroidProps> = ({
 
       {/* Caption Area */}
       <div
-        className={`font-marker text-center leading-tight px-2 text-gray-800 break-words ${textSize}`}
+        className={`relative z-10 font-marker text-center leading-tight px-2 text-gray-800 break-words ${textSize}`}
       >
         {photo.caption}
       </div>

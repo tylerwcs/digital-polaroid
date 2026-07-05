@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getPhotos, subscribeToUpdates, subscribeToDelete } from '../services/storageService';
 import { PhotoEntry } from '../types';
@@ -14,12 +14,75 @@ const MarqueeColumn: React.FC<{
   photos: PhotoEntry[],
   speed?: number,
   delay?: number,
-  newIds?: Set<string>
-}> = ({ photos, speed = 0.5, delay = 0, newIds }) => {
+  newIds?: Set<string>,
+  onEntrancePlayed?: (id: string) => void
+}> = ({ photos, speed = 0.5, delay = 0, newIds, onEntrancePlayed }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const yPos = useRef(0);
   const reqId = useRef<number>();
   const lastHeight = useRef(0);
+
+  // Pop-in is triggered when a new photo scrolls INTO the visible area (not on
+  // mount — the marquee inserts photos off-screen, so a mount animation would
+  // finish before the photo is ever seen). An IntersectionObserver reports the
+  // element's real on-screen position even though the marquee moves it via CSS
+  // transform, letting us fire the "drop & settle" exactly as it enters the line.
+  const [animatingKeys, setAnimatingKeys] = useState<Set<string>>(new Set());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const observedEls = useRef<Map<string, Element>>(new Map());
+  const animatedIds = useRef<Set<string>>(new Set()); // photos that already played, so copies don't repeat
+  const onEntranceRef = useRef(onEntrancePlayed);
+  useEffect(() => { onEntranceRef.current = onEntrancePlayed; }, [onEntrancePlayed]);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const el = entry.target as HTMLElement;
+        const id = el.dataset.popId;
+        const key = el.dataset.popKey;
+        io.unobserve(el);
+        if (key) observedEls.current.delete(key);
+        if (!id || animatedIds.current.has(id)) return; // a sibling copy already played
+        animatedIds.current.add(id);
+        if (key) {
+          setAnimatingKeys((prev) => new Set(prev).add(key));
+          // Drop the class once the animation is done (keeps the set bounded).
+          window.setTimeout(() => {
+            setAnimatingKeys((prev) => {
+              const next = new Set(prev);
+              next.delete(key);
+              return next;
+            });
+          }, 1300);
+        }
+        onEntranceRef.current?.(id); // let the parent clear the "new" flag
+      });
+    }, { threshold: 0.15 });
+    observerRef.current = io;
+    return () => {
+      io.disconnect();
+      observerRef.current = null;
+      observedEls.current.clear();
+    };
+  }, []);
+
+  // Callback ref for a not-yet-seen new photo: (re)register it with the observer.
+  const registerNewItem = (key: string, id: string) => (el: HTMLDivElement | null) => {
+    const io = observerRef.current;
+    const prev = observedEls.current.get(key);
+    if (prev && prev !== el) {
+      io?.unobserve(prev);
+      observedEls.current.delete(key);
+    }
+    if (el && io) {
+      el.dataset.popId = id;
+      el.dataset.popKey = key;
+      io.observe(el);
+      observedEls.current.set(key, el);
+    }
+  };
 
   // Calculate repeat count to ensure vertical fill
   const repeatCount = useMemo(() => {
@@ -104,18 +167,25 @@ const MarqueeColumn: React.FC<{
     >
       <div ref={containerRef} className="w-full flex flex-col">
         {Array.from({ length: repeatCount }).map((_, setIndex) => (
-           photos.map((photo, index) => (
-            <div
-              key={`${setIndex}-${photo.id}-${index}`}
-              className={`w-full flex justify-center mb-12${newIds?.has(photo.id) ? ' animate-pop-in' : ''}`}
-            >
-                <Polaroid 
-                  photo={photo} 
+           photos.map((photo, index) => {
+            const key = `${setIndex}-${photo.id}-${index}`;
+            // "Pending" = flagged new by the parent and not yet played in this column.
+            const pending = !!newIds?.has(photo.id) && !animatedIds.current.has(photo.id);
+            const animating = animatingKeys.has(key);
+            return (
+              <div
+                key={key}
+                ref={pending ? registerNewItem(key, photo.id) : undefined}
+                className={`w-full flex justify-center mb-12${animating ? ' animate-pop-in' : ''}`}
+              >
+                <Polaroid
+                  photo={photo}
                   size="small"
                   className="w-full max-w-[180px] hover:z-10 transition-transform hover:scale-105 hover:rotate-0 shadow-lg"
                 />
-            </div>
-          ))
+              </div>
+            );
+          })
         ))}
       </div>
     </div>
@@ -181,16 +251,18 @@ const DisplayViewGrid: React.FC = () => {
 
         setPhotos((prev) => [...prev, newPhoto]);
 
-        // Flag this photo as new so it pops in, then clear the flag once the
-        // animation has finished.
+        // Flag this photo as new so it pops in once it scrolls into view. The
+        // column clears the flag when it plays (via onEntrancePlayed); this
+        // timeout is only a safety net in case it never becomes visible.
         setNewIds((prev) => new Set(prev).add(newPhoto.id));
         setTimeout(() => {
           setNewIds((prev) => {
+            if (!prev.has(newPhoto.id)) return prev;
             const next = new Set(prev);
             next.delete(newPhoto.id);
             return next;
           });
-        }, 800);
+        }, 20000);
       };
 
       const src = newPhoto.imageUrl || (newPhoto.images && newPhoto.images[0]);
@@ -215,6 +287,17 @@ const DisplayViewGrid: React.FC = () => {
       unsubscribe();
       unsubscribeDelete();
     };
+  }, []);
+
+  // A column calls this once it has played a new photo's entrance, so we stop
+  // flagging it as new (prevents other columns/copies from re-triggering it).
+  const handleEntrancePlayed = useCallback((id: string) => {
+    setNewIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   // Distribute photos into columns
@@ -257,10 +340,12 @@ const DisplayViewGrid: React.FC = () => {
             <div className="flex flex-row justify-center gap-6 h-full w-full max-w-[1920px] mx-auto px-8">
               {columns.map((colPhotos, colIndex) => (
                 <div key={colIndex} className="flex-1 relative overflow-hidden h-full">
-                   <MarqueeColumn 
-                      photos={colPhotos} 
-                      speed={0.5} 
-                      delay={colIndex * 2} 
+                   <MarqueeColumn
+                      photos={colPhotos}
+                      speed={0.5}
+                      delay={colIndex * 2}
+                      newIds={newIds}
+                      onEntrancePlayed={handleEntrancePlayed}
                    />
                   
                   {/* 

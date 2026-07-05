@@ -59,16 +59,19 @@
         animation-play-state: paused;
       }
 
-      /* Pop-in for newly arriving polaroids */
+      /* Pop-in for newly arriving polaroids: a "drop & settle" — the card falls
+         in from slightly above, smaller and tilted, overshoots, then settles.
+         Transform-origin at the top makes it read like it's being hung on the
+         wall. Transform + opacity only, so it stays GPU-composited and smooth. */
       @keyframes popIn {
-        0%   { opacity: 0; transform: scale(0.6); }
-        100% { opacity: 1; transform: scale(1); }
+        0%   { opacity: 0; transform: translateY(-26px) scale(0.88) rotate(-4deg); }
+        55%  { opacity: 1; transform: translateY(4px)   scale(1.03) rotate(1.5deg); }
+        78%  {              transform: translateY(-1px)  scale(0.995) rotate(-0.5deg); }
+        100% { opacity: 1; transform: translateY(0)     scale(1)    rotate(0deg); }
       }
       .animate-pop-in {
-        /* Overshoot easing gives a gentle pop past 1.0 then settles, driven by
-           GPU-composited transform + opacity only (no layout thrash). */
-        animation: popIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-        transform-origin: center;
+        animation: popIn 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+        transform-origin: center top;
         will-change: transform, opacity;
       }
 

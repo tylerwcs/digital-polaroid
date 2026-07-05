@@ -31,3 +31,6 @@ public/*.mp4
 *.njsproj
 *.sln
 *.sw?
+
+# Visual brainstorm companion scratch
+.superpowers/

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createRequire } from 'module';
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
+import { pickWatermarkColor } from '../shared/watermark.js';
 
 const require = createRequire(import.meta.url);
 
@@ -80,6 +81,50 @@ async function ensureCaptionFonts(serverDir) {
     throw new Error(`Failed to register Noto Color Emoji from ${emojiPath}`);
   }
   captionFontsRegistered = true;
+}
+
+let watermarkTexture = null;
+let watermarkTextureTried = false;
+
+// The texture is a public asset copied into dist/ on build; fall back to
+// public/ for local dev. Returns a loaded image or null (watermark is optional).
+async function ensureWatermarkTexture(serverDir) {
+  if (watermarkTextureTried) return watermarkTexture;
+  watermarkTextureTried = true;
+  const candidates = [
+    path.resolve(serverDir, '..', 'dist', 'watermark-watercolour.png'),
+    path.resolve(serverDir, '..', 'public', 'watermark-watercolour.png'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const buf = await fs.readFile(candidate);
+      watermarkTexture = await loadImage(buf);
+      return watermarkTexture;
+    } catch {
+      /* try next */
+    }
+  }
+  watermarkTexture = null;
+  return null;
+}
+
+// Draw the tinted watercolour wash, clipped to the card's rounded rect.
+function drawWatermark(ctx, texture, color, cardX, cardY, cardW, cardH) {
+  if (!texture) return;
+  const tint = createCanvas(cardW, cardH);
+  const tctx = tint.getContext('2d');
+  tctx.drawImage(texture, 0, 0, cardW, cardH);
+  // Keep only the texture's shape, recoloured.
+  tctx.globalCompositeOperation = 'source-in';
+  tctx.fillStyle = color;
+  tctx.fillRect(0, 0, cardW, cardH);
+
+  ctx.save();
+  roundRectPath(ctx, cardX, cardY, cardW, cardH, CARD_RADIUS);
+  ctx.clip();
+  ctx.globalAlpha = 0.12;
+  ctx.drawImage(tint, cardX, cardY, cardW, cardH);
+  ctx.restore();
 }
 
 function wrapLines(ctx, text, maxWidth) {
@@ -191,6 +236,8 @@ function drawTape(ctx, cx, topY) {
 export async function renderPolaroidPng(photo, deps) {
   const { __dirname: serverDir, fullImagePath, decodeBase64Image } = deps;
   await ensureCaptionFonts(serverDir);
+  const watermarkImg = await ensureWatermarkTexture(serverDir);
+  const watermarkColor = pickWatermarkColor(photo.id);
 
   const innerW = POLAROID_OUTER_W - PAD_X * 2;
   const hasFile = Boolean(photo.storageFile);
@@ -271,6 +318,8 @@ export async function renderPolaroidPng(photo, deps) {
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.restore();
+
+  drawWatermark(ctx, watermarkImg, watermarkColor, cardX, cardY, cardW, cardH);
 
   if (photoImg) {
     const frameX = cardX + PAD_X;

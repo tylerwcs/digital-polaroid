@@ -280,19 +280,12 @@ const DisplayView: React.FC = () => {
       
       {/* Background Wrapper - Blurs when spotlight is active */}
       <div className={`flex-grow flex flex-col relative transition-all duration-1000 ease-in-out ${isSpotlightActive ? 'blur-md brightness-50 scale-[0.98]' : ''}`}>
-        <video
+        <img
           className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
+          src="/azpoa2BG.png"
+          alt=""
           aria-hidden
-        >
-          <source
-            src="/BG.mp4"
-            type="video/mp4"
-          />
-        </video>
+        />
 
         {/* Logo & QR Code Container */}
         <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">

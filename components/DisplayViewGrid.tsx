@@ -314,18 +314,12 @@ const DisplayViewGrid: React.FC = () => {
       
       {/* Background Wrapper */}
       <div className="flex-grow flex flex-col relative">
-        {/* Boomerang (forward+reverse) clip loops seamlessly with a single
-            video element — no crossfade, so the marquee never drops frames. */}
-        <video
+        <img
           className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
+          src="/azpoa2BG.png"
+          alt=""
           aria-hidden
-        >
-          <source src="/generali-bg-boomerang.mp4" type="video/mp4" />
-        </video>
+        />
 
         <main 
           ref={containerRef}

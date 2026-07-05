@@ -8,7 +8,8 @@
     "server": "node server/index.js",
     "build": "vite build",
     "start": "node server/index.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "gen:watermark": "node scripts/generate-watermark-texture.mjs"
   },
   "dependencies": {
     "@fontsource/caveat": "^5.2.8",

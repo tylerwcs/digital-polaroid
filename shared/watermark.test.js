@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WATERMARK_COLORS, pickWatermarkColor } from './watermark.js';
+import { WATERMARK_COLORS, pickWatermarkColor, pickWatermarkCorner } from './watermark.js';
 
 test('exposes exactly the six background palette colours', () => {
   assert.deepEqual(WATERMARK_COLORS, [
@@ -34,4 +34,21 @@ test('known ids map to stable colours (guards against hash drift)', () => {
     Array.from({ length: 30 }, (_, i) => pickWatermarkColor('id-' + i))
   );
   assert.ok(spread.size >= 4, `expected variety, got ${spread.size} colours`);
+});
+
+test('corner is a deterministic pair of flip flags', () => {
+  const c = pickWatermarkCorner('photo-7');
+  assert.deepEqual(c, pickWatermarkCorner('photo-7'));
+  assert.equal(typeof c.flipX, 'boolean');
+  assert.equal(typeof c.flipY, 'boolean');
+});
+
+test('corners spread across all four orientations', () => {
+  const seen = new Set(
+    Array.from({ length: 40 }, (_, i) => {
+      const { flipX, flipY } = pickWatermarkCorner('id-' + i);
+      return `${flipX}-${flipY}`;
+    })
+  );
+  assert.equal(seen.size, 4, `expected all 4 corners, got ${seen.size}`);
 });

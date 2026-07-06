@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createRequire } from 'module';
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
-import { pickWatermarkColor } from '../shared/watermark.js';
+import { pickWatermarkColor, pickWatermarkCorner } from '../shared/watermark.js';
 
 const require = createRequire(import.meta.url);
 
@@ -108,8 +108,9 @@ async function ensureWatermarkTexture(serverDir) {
   return null;
 }
 
-// Draw the tinted watercolour wash, clipped to the card's rounded rect.
-function drawWatermark(ctx, texture, color, cardX, cardY, cardW, cardH) {
+// Draw the tinted watercolour wash, clipped to the card's rounded rect. The
+// bottom-left-anchored bloom is flipped into this card's chosen corner.
+function drawWatermark(ctx, texture, color, corner, cardX, cardY, cardW, cardH) {
   if (!texture) return;
   const tint = createCanvas(cardW, cardH);
   const tctx = tint.getContext('2d');
@@ -122,8 +123,11 @@ function drawWatermark(ctx, texture, color, cardX, cardY, cardW, cardH) {
   ctx.save();
   roundRectPath(ctx, cardX, cardY, cardW, cardH, CARD_RADIUS);
   ctx.clip();
-  ctx.globalAlpha = 0.12;
-  ctx.drawImage(tint, cardX, cardY, cardW, cardH);
+  ctx.globalAlpha = 0.17;
+  // Flip around the card centre to place the bloom in the chosen corner.
+  ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
+  ctx.scale(corner.flipX ? -1 : 1, corner.flipY ? -1 : 1);
+  ctx.drawImage(tint, -cardW / 2, -cardH / 2, cardW, cardH);
   ctx.restore();
 }
 
@@ -238,6 +242,7 @@ export async function renderPolaroidPng(photo, deps) {
   await ensureCaptionFonts(serverDir);
   const watermarkImg = await ensureWatermarkTexture(serverDir);
   const watermarkColor = pickWatermarkColor(photo.id);
+  const watermarkCorner = pickWatermarkCorner(photo.id);
 
   const innerW = POLAROID_OUTER_W - PAD_X * 2;
   const hasFile = Boolean(photo.storageFile);
@@ -319,7 +324,7 @@ export async function renderPolaroidPng(photo, deps) {
   ctx.fill();
   ctx.restore();
 
-  drawWatermark(ctx, watermarkImg, watermarkColor, cardX, cardY, cardW, cardH);
+  drawWatermark(ctx, watermarkImg, watermarkColor, watermarkCorner, cardX, cardY, cardW, cardH);
 
   if (photoImg) {
     const frameX = cardX + PAD_X;

@@ -1,7 +1,11 @@
-// Deterministic grayscale watercolour wash texture.
+// Deterministic grayscale watercolour BLOOM texture.
 // White (organic, feathered) on transparent background — the ALPHA channel
 // carries the shape, so it works both as a CSS alpha-mask and as a canvas
 // source-in tint. Re-running produces a byte-identical PNG (seeded PRNG).
+//
+// Look: a granulated watercolour bloom — many small overlapping "cells" (soft
+// centre, brighter rim, like pigment pooling at bubble edges) clustered densely
+// in one corner and fading diagonally out into a scatter of splatter droplets.
 import { createCanvas } from '@napi-rs/canvas';
 import { writeFile } from 'fs/promises';
 import path from 'path';
@@ -26,37 +30,65 @@ const canvas = createCanvas(W, H);
 const ctx = canvas.getContext('2d');
 ctx.clearRect(0, 0, W, H);
 
-const cx = W * 0.5;
-const cy = H * 0.5;
-
-// Stack many soft white radial blobs to build organic, lumpy edges.
-for (let i = 0; i < 140; i++) {
-  const ang = rnd() * Math.PI * 2;
-  const spread = Math.pow(rnd(), 0.6);
-  const px = cx + Math.cos(ang) * spread * W * 0.34;
-  const py = cy + Math.sin(ang) * spread * H * 0.36;
-  const r = (0.1 + rnd() * 0.22) * Math.min(W, H);
-  const a = 0.05 + rnd() * 0.09;
-  const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+// One feathered dab of pigment (used for splatter + soft under-wash).
+function dab(x, y, r, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(0.8, r));
   g.addColorStop(0, `rgba(255,255,255,${a})`);
-  g.addColorStop(0.7, `rgba(255,255,255,${a * 0.5})`);
+  g.addColorStop(0.55, `rgba(255,255,255,${a * 0.6})`);
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.arc(x, y, Math.max(0.8, r), 0, Math.PI * 2);
   ctx.fill();
 }
 
-// A few large central washes to unify the blob.
-for (let i = 0; i < 3; i++) {
-  const r = (0.5 + rnd() * 0.2) * Math.min(W, H);
-  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-  g.addColorStop(0, 'rgba(255,255,255,0.12)');
+// One watercolour "cell": soft centre with a brighter rim, mimicking the way
+// pigment granulates and pools at the edges of a bloom. Overlapping many of
+// these builds the reticulated, bubbly texture.
+function cell(x, y, r, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(255,255,255,${a * 0.32})`);
+  g.addColorStop(0.72, `rgba(255,255,255,${a * 0.5})`);
+  g.addColorStop(0.9, `rgba(255,255,255,${a})`); // pooled rim
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
+}
+
+// Bloom anchored in the bottom-left, fading toward the top-right.
+const ax = W * 0.14;
+const ay = H * 0.84;
+const maxD = Math.hypot(W, H) * 0.92;
+
+// 0) A soft under-wash so the dense corner reads as a bloom, not just cells.
+for (let i = 0; i < 22; i++) {
+  const d = Math.pow(rnd(), 2) * maxD * 0.55;
+  const ang = rnd() * Math.PI * 2;
+  dab(ax + Math.cos(ang) * d, ay + Math.sin(ang) * d * 0.9, 30 + rnd() * 70, 0.05 + rnd() * 0.05);
+}
+
+// 1) The cells — dense near the anchor, thinning with distance.
+for (let i = 0; i < 260; i++) {
+  const d = Math.pow(rnd(), 1.7) * maxD;         // concentrate near the anchor
+  const ang = rnd() * Math.PI * 2;
+  const x = ax + Math.cos(ang) * d;
+  const y = ay + Math.sin(ang) * d * 0.9;
+  const r = 5 + Math.pow(rnd(), 1.4) * 18;
+  const distFade = 1 - Math.min(1, d / maxD);    // brighter near the anchor
+  const a = (0.16 + rnd() * 0.2) * (0.3 + distFade * 0.7);
+  cell(x, y, r, a);
+}
+
+// 2) Splatter droplets flung out along the fade, thinning the bloom's edge.
+for (let i = 0; i < 150; i++) {
+  const d = (0.25 + rnd() * 0.75) * maxD;
+  const ang = rnd() * Math.PI * 2;
+  const x = ax + Math.cos(ang) * d;
+  const y = ay + Math.sin(ang) * d * 0.9;
+  const distFade = 1 - Math.min(1, d / maxD);
+  dab(x, y, 0.8 + rnd() * 3, (0.2 + rnd() * 0.3) * (0.4 + distFade * 0.6));
 }
 
 const out = path.resolve(__dirname, '..', 'public', 'watermark-watercolour.png');

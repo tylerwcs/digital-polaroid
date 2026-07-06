@@ -1,6 +1,6 @@
 import React from 'react';
 import { PhotoEntry } from '../types';
-import { pickWatermarkColor } from '../shared/watermark.js';
+import { pickWatermarkColor, pickWatermarkCorner } from '../shared/watermark.js';
 
 interface PolaroidProps {
   photo: PhotoEntry;
@@ -22,8 +22,9 @@ export const Polaroid: React.FC<PolaroidProps> = ({
 
   const isSmall = size === 'small';
 
-  // Deterministic per-photo watercolour wash colour (matches the PNG export).
+  // Deterministic per-photo watercolour wash colour + corner (matches the PNG export).
   const watermarkColor = pickWatermarkColor(photo.id);
+  const watermarkCorner = pickWatermarkCorner(photo.id);
 
   // Size-based classes
   const containerPadding = isSmall ? 'p-2 pb-6' : 'p-3 pb-12';
@@ -47,7 +48,9 @@ export const Polaroid: React.FC<PolaroidProps> = ({
         className="absolute inset-0 z-0 rounded-[10px] overflow-hidden pointer-events-none"
         style={{
           backgroundColor: watermarkColor,
-          opacity: 0.12,
+          opacity: 0.17,
+          // Flip the bottom-left-anchored bloom into this card's chosen corner.
+          transform: `scale(${watermarkCorner.flipX ? -1 : 1}, ${watermarkCorner.flipY ? -1 : 1})`,
           WebkitMaskImage: 'url(/watermark-watercolour.png)',
           maskImage: 'url(/watermark-watercolour.png)',
           WebkitMaskSize: '100% 100%',

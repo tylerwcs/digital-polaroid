@@ -43,3 +43,18 @@ export function pickWatermarkColor(id) {
   const idx = Math.abs(hashString(key)) % WATERMARK_COLORS.length;
   return WATERMARK_COLORS[idx];
 }
+
+/**
+ * Deterministically choose which corner the watercolour bloom sits in, as a
+ * pair of flip flags applied to the (bottom-left-anchored) texture. Uses a
+ * different hash key from the colour so corner and colour vary independently.
+ *
+ * idx 0 → bottom-left (no flip), 1 → bottom-right (flipX),
+ * idx 2 → top-left (flipY),     3 → top-right (flipX + flipY).
+ * @param {string|number} id
+ * @returns {{ flipX: boolean, flipY: boolean }}
+ */
+export function pickWatermarkCorner(id) {
+  const idx = Math.abs(hashString(String(id) + '#corner')) % 4;
+  return { flipX: idx === 1 || idx === 3, flipY: idx === 2 || idx === 3 };
+}

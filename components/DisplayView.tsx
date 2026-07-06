@@ -291,7 +291,7 @@ const DisplayView: React.FC = () => {
         <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
           {/* QR Code */}
           {uploadUrl && (
-            <div className="bg-black/90 p-3 rounded-xl shadow-2xl border border-white/30 transition-transform hover:scale-105">
+            <div className="bg-white/70 p-3 rounded-xl shadow-2xl border border-black/10 transition-transform hover:scale-105">
               <div className="bg-white p-2 rounded-md">
                 <QRCodeSVG 
                   value={uploadUrl} 
@@ -301,7 +301,7 @@ const DisplayView: React.FC = () => {
                   fgColor="#000000"
                 />
               </div>
-              <p className="text-center text-xs font-semibold mt-2 text-white">Scan to Upload</p>
+              <p className="text-center text-xs font-semibold mt-2 text-black">Scan to Upload</p>
             </div>
           )}
 

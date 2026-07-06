@@ -123,7 +123,7 @@ function drawWatermark(ctx, texture, color, corner, cardX, cardY, cardW, cardH) 
   ctx.save();
   roundRectPath(ctx, cardX, cardY, cardW, cardH, CARD_RADIUS);
   ctx.clip();
-  ctx.globalAlpha = 0.17;
+  ctx.globalAlpha = 0.25;
   // Flip around the card centre to place the bloom in the chosen corner.
   ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
   ctx.scale(corner.flipX ? -1 : 1, corner.flipY ? -1 : 1);

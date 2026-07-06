@@ -48,7 +48,7 @@ export const Polaroid: React.FC<PolaroidProps> = ({
         className="absolute inset-0 z-0 rounded-[10px] overflow-hidden pointer-events-none"
         style={{
           backgroundColor: watermarkColor,
-          opacity: 0.17,
+          opacity: 0.25,
           // Flip the bottom-left-anchored bloom into this card's chosen corner.
           transform: `scale(${watermarkCorner.flipX ? -1 : 1}, ${watermarkCorner.flipY ? -1 : 1})`,
           WebkitMaskImage: 'url(/watermark-watercolour.png)',

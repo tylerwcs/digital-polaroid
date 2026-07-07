@@ -338,7 +338,7 @@ const DisplayViewGrid: React.FC = () => {
                 <div key={colIndex} className="flex-1 relative overflow-hidden h-full">
                    <MarqueeColumn
                       photos={colPhotos}
-                      speed={0.5}
+                      speed={0.85}
                       delay={colIndex * 2}
                       newIds={newIds}
                       onEntrancePlayed={handleEntrancePlayed}

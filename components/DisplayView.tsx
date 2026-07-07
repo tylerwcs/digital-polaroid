@@ -329,9 +329,9 @@ const DisplayView: React.FC = () => {
               {columns.map((colPhotos, colIndex) => (
                 <div key={colIndex} className="flex-1 relative overflow-hidden h-full">
                    <MarqueeColumn 
-                      photos={colPhotos} 
-                      speed={0.5} 
-                      delay={colIndex * 2} 
+                      photos={colPhotos}
+                      speed={0.85}
+                      delay={colIndex * 2}
                    />
                   
                   {/* 

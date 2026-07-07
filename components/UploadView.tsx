@@ -167,10 +167,10 @@ const UploadView: React.FC = () => {
            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
         `}>
            <h2 className="text-4xl font-marker text-white mb-2 tracking-wider transform -rotate-2">
-             Share the Moments!
+             What makes you unique?
            </h2>
            <p className="text-zinc-400 text-sm max-w-xs mx-auto leading-relaxed">
-             Send a message or upload photos to the digital wall for everyone to see!
+             Tell us something special about yourself and attach your favorite photo!
            </p>
         </div>
 
@@ -184,7 +184,7 @@ const UploadView: React.FC = () => {
             ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
           `}
         >
-          ✎ Write a Note
+          ✎ Share something!
         </button>
 
         {/* Camera & Photo Wrapper to keep them anchored together */}

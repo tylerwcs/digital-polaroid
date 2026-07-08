@@ -167,10 +167,10 @@ const UploadView: React.FC = () => {
            ${stage === 'idle' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none absolute'}
         `}>
            <h2 className="text-4xl font-marker text-white mb-2 tracking-wider transform -rotate-2">
-             What makes you unique?
+             What makes us stronger together?
            </h2>
            <p className="text-zinc-400 text-sm max-w-xs mx-auto leading-relaxed">
-             Tell us something special about yourself and attach your favorite photo!
+             Share what unites us — add a photo and a few words for everyone to see!
            </p>
         </div>
 

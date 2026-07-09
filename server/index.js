@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import archiver from 'archiver';
 import { renderPolaroidPng, canExportPolaroid } from './polaroidExport.js';
 import { captionModerationError } from './moderation.js';
+import { WALL_SETTINGS_DEFAULTS, normalizeWallSettings } from './settings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +62,10 @@ const PORT = process.env.PORT || 3000;
 const DATA_FILE = process.env.PHOTOS_DATA_FILE
   || path.join(path.dirname(UPLOAD_DIR), 'photos.json');
 
+// Wall display settings, stored beside photos.json on the same persistent volume.
+const SETTINGS_FILE = process.env.WALL_SETTINGS_FILE
+  || path.join(path.dirname(UPLOAD_DIR), 'settings.json');
+
 // Built frontend (vite build output). Present in production single-service
 // deploys (e.g. Railway); absent in local dev where Vite serves the app.
 const DIST_DIR = path.resolve(__dirname, '..', 'dist');
@@ -93,6 +98,7 @@ if (SERVE_FRONTEND) {
 
 // In-memory cache
 let photos = [];
+let wallSettings = { ...WALL_SETTINGS_DEFAULTS };
 let activeUploads = 0;
 let saveTimer = null;
 let savePending = false;
@@ -221,6 +227,31 @@ async function loadPhotos() {
   }
 }
 
+// Load wall settings from disk (optional; mirrors loadPhotos).
+async function loadSettings() {
+  if (!ENABLE_DISK_CACHE) {
+    wallSettings = { ...WALL_SETTINGS_DEFAULTS };
+    return;
+  }
+  try {
+    const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
+    wallSettings = normalizeWallSettings(JSON.parse(data), WALL_SETTINGS_DEFAULTS);
+    console.log('Loaded wall settings', wallSettings);
+  } catch (error) {
+    wallSettings = { ...WALL_SETTINGS_DEFAULTS };
+    console.log('No wall settings found, using defaults');
+  }
+}
+
+async function saveSettings() {
+  if (!ENABLE_DISK_CACHE) return;
+  try {
+    await fs.writeFile(SETTINGS_FILE, JSON.stringify(wallSettings, null, 2));
+  } catch (error) {
+    console.error('Failed to save wall settings:', error);
+  }
+}
+
 // Save photos to disk (optional)
 async function savePhotosToDisk() {
   if (!ENABLE_DISK_CACHE) return;
@@ -292,6 +323,19 @@ const validatePhotoPayload = (photo) => {
 // API Routes
 app.get('/api/photos', (req, res) => {
   res.json(photos.map(sanitizePhoto));
+});
+
+app.get('/api/settings', (req, res) => {
+  res.json(wallSettings);
+});
+
+app.put('/api/settings', async (req, res) => {
+  // No server-side auth here, matching the existing posture (DELETE /api/photos
+  // is likewise unauthenticated; admin is gated only client-side).
+  wallSettings = normalizeWallSettings(req.body, wallSettings);
+  await saveSettings();
+  io.emit('settings_update', wallSettings);
+  res.json(wallSettings);
 });
 
 app.post('/api/photos', async (req, res) => {
@@ -456,6 +500,7 @@ io.on('connection', (socket) => {
 // Start server
 await ensureUploadDir();
 await loadPhotos();
+await loadSettings();
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
   console.log(`[snapwall] Static uploads: ${UPLOAD_URL_BASE} -> ${UPLOAD_DIR}`);

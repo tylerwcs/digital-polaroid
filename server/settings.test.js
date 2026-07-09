@@ -4,6 +4,7 @@ import {
   WALL_SETTINGS_DEFAULTS,
   WALL_SETTINGS_BOUNDS,
   DEFAULT_BACKGROUND,
+  DEFAULT_DOWNLOAD_BACKGROUND,
   normalizeWallSettings,
 } from './settings.js';
 
@@ -12,6 +13,7 @@ test('empty patch over defaults returns the defaults', () => {
     maxColumns: 6,
     polaroidWidth: 180,
     background: DEFAULT_BACKGROUND,
+    downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND,
   });
 });
 
@@ -37,21 +39,21 @@ test('non-numeric value keeps the base value', () => {
 test('partial patch updates only the provided key', () => {
   const base = { maxColumns: 4, polaroidWidth: 200 };
   const result = normalizeWallSettings({ polaroidWidth: 260 }, base);
-  assert.deepEqual(result, { maxColumns: 4, polaroidWidth: 260, background: DEFAULT_BACKGROUND });
+  assert.deepEqual(result, { maxColumns: 4, polaroidWidth: 260, background: DEFAULT_BACKGROUND, downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND });
 });
 
 test('ignores unknown keys', () => {
   const result = normalizeWallSettings({ speed: 5, maxColumns: 3 });
-  assert.deepEqual(result, { maxColumns: 3, polaroidWidth: 180, background: DEFAULT_BACKGROUND });
+  assert.deepEqual(result, { maxColumns: 3, polaroidWidth: 180, background: DEFAULT_BACKGROUND, downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND });
 });
 
 test('sanitizes a corrupt base object', () => {
   const result = normalizeWallSettings({}, { maxColumns: 999, polaroidWidth: 'x' });
-  assert.deepEqual(result, { maxColumns: 8, polaroidWidth: 180, background: DEFAULT_BACKGROUND });
+  assert.deepEqual(result, { maxColumns: 8, polaroidWidth: 180, background: DEFAULT_BACKGROUND, downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND });
 });
 
 test('non-object patch is treated as empty', () => {
-  assert.deepEqual(normalizeWallSettings(null), { maxColumns: 6, polaroidWidth: 180, background: DEFAULT_BACKGROUND });
+  assert.deepEqual(normalizeWallSettings(null), { maxColumns: 6, polaroidWidth: 180, background: DEFAULT_BACKGROUND, downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND });
 });
 
 test('null / boolean / array / whitespace inputs fall back to base', () => {
@@ -126,4 +128,31 @@ test('partial patch without background preserves base background', () => {
 test('strips extra keys from a background object', () => {
   const r = normalizeWallSettings({ background: { type: 'color', value: '#000000', evil: true } }).background;
   assert.deepEqual(r, { type: 'color', value: '#000000' });
+});
+
+test('default settings include the default download background', () => {
+  assert.equal(normalizeWallSettings({}).downloadBackground, DEFAULT_DOWNLOAD_BACKGROUND);
+});
+
+test('accepts a valid download background url', () => {
+  assert.equal(normalizeWallSettings({ downloadBackground: '/uploads/dl-1.png' }).downloadBackground, '/uploads/dl-1.png');
+});
+
+test('empty download background keeps base', () => {
+  const base = { maxColumns: 6, polaroidWidth: 180, background: DEFAULT_BACKGROUND, downloadBackground: '/uploads/dl-9.png' };
+  assert.equal(normalizeWallSettings({ downloadBackground: '' }, base).downloadBackground, '/uploads/dl-9.png');
+});
+
+test('non-string download background falls back to default', () => {
+  assert.equal(normalizeWallSettings({ downloadBackground: 123 }).downloadBackground, DEFAULT_DOWNLOAD_BACKGROUND);
+});
+
+test('over-long download background falls back to default', () => {
+  const long = '/' + 'a'.repeat(3000);
+  assert.equal(normalizeWallSettings({ downloadBackground: long }).downloadBackground, DEFAULT_DOWNLOAD_BACKGROUND);
+});
+
+test('partial patch without download background preserves base', () => {
+  const base = { maxColumns: 6, polaroidWidth: 180, background: DEFAULT_BACKGROUND, downloadBackground: '/uploads/dl-5.png' };
+  assert.equal(normalizeWallSettings({ maxColumns: 3 }, base).downloadBackground, '/uploads/dl-5.png');
 });

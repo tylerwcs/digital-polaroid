@@ -10,10 +10,13 @@ export const WALL_BACKGROUND_PRESET_IDS = ['generali-boomerang', 'generali', 'bg
 
 export const DEFAULT_BACKGROUND = { type: 'preset', value: 'generali-boomerang' };
 
+export const DEFAULT_DOWNLOAD_BACKGROUND = '/downloadBG.png';
+
 export const WALL_SETTINGS_DEFAULTS = {
   maxColumns: 6,
   polaroidWidth: 180,
   background: DEFAULT_BACKGROUND,
+  downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND,
 };
 
 const clamp = (value, min, max, fallback, round) => {
@@ -27,10 +30,12 @@ const clamp = (value, min, max, fallback, round) => {
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
+const isNonEmptyUrl = (value) => typeof value === 'string' && value.length > 0 && value.length <= 2048;
+
 const isValidBackground = (type, value) => {
   if (type === 'color') return typeof value === 'string' && HEX_COLOR.test(value);
   if (type === 'preset') return WALL_BACKGROUND_PRESET_IDS.includes(value);
-  if (type === 'custom') return typeof value === 'string' && value.length > 0 && value.length <= 2048;
+  if (type === 'custom') return isNonEmptyUrl(value);
   return false;
 };
 
@@ -40,6 +45,9 @@ const normalizeBackground = (bg, base) => {
   if (isValidBackground(bg.type, bg.value)) return { type: bg.type, value: bg.value };
   return base;
 };
+
+// Accept a non-empty URL string; otherwise keep base.
+const normalizeDownloadBackground = (value, base) => (isNonEmptyUrl(value) ? value : base);
 
 const sanitize = (source, base) => ({
   maxColumns: clamp(
@@ -57,6 +65,7 @@ const sanitize = (source, base) => ({
     false,
   ),
   background: normalizeBackground(source.background, base.background),
+  downloadBackground: normalizeDownloadBackground(source.downloadBackground, base.downloadBackground),
 });
 
 // Merge an untrusted patch over a base, clamping every field. Missing/invalid
@@ -74,5 +83,8 @@ export const normalizeWallSettings = (patch = {}, base = WALL_SETTINGS_DEFAULTS)
     background: 'background' in source
       ? normalizeBackground(source.background, safeBase.background)
       : safeBase.background,
+    downloadBackground: 'downloadBackground' in source
+      ? normalizeDownloadBackground(source.downloadBackground, safeBase.downloadBackground)
+      : safeBase.downloadBackground,
   };
 };

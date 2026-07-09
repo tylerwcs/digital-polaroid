@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos } from '../services/storageService';
-import { PhotoEntry } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos, getWallSettings, saveWallSettings, subscribeToSettings } from '../services/storageService';
+import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS } from '../types';
 import { useToast } from '../context/ToastContext';
 
 const AdminView: React.FC = () => {
@@ -9,6 +9,8 @@ const AdminView: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
   const { showToast } = useToast();
+  const [settings, setSettings] = useState<WallSettings>(WALL_SETTINGS_DEFAULTS);
+  const saveTimer = useRef<number>();
 
   // Simple hardcoded password for demo purposes
   const ADMIN_PASSWORD = "admin"; 
@@ -31,6 +33,34 @@ const AdminView: React.FC = () => {
       };
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    getWallSettings().then(setSettings);
+    const unsubscribe = subscribeToSettings(setSettings);
+    return unsubscribe;
+  }, [isAuthenticated]);
+
+  const persistSettings = (next: WallSettings) => {
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      saveWallSettings(next);
+    }, 300);
+  };
+
+  const updateSettings = (patch: Partial<WallSettings>) => {
+    setSettings(prev => {
+      const next = { ...prev, ...patch };
+      persistSettings(next);
+      return next;
+    });
+  };
+
+  const handleResetSettings = () => {
+    window.clearTimeout(saveTimer.current);
+    setSettings(WALL_SETTINGS_DEFAULTS);
+    saveWallSettings(WALL_SETTINGS_DEFAULTS);
+  };
 
   const loadPhotos = async () => {
     const loadedPhotos = await getPhotos();
@@ -108,6 +138,41 @@ const AdminView: React.FC = () => {
           </button>
         </div>
       </header>
+
+      <section className="max-w-6xl mx-auto mb-8 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-4">Wall-6 Display Settings</h2>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm text-zinc-400">Columns (max): {settings.maxColumns}</span>
+            <input
+              type="number"
+              min={WALL_SETTINGS_BOUNDS.maxColumns.min}
+              max={WALL_SETTINGS_BOUNDS.maxColumns.max}
+              value={settings.maxColumns}
+              onChange={(e) => updateSettings({ maxColumns: Number(e.target.value) })}
+              className="mt-2 w-full bg-zinc-950 text-white border border-zinc-700 rounded-lg p-2 focus:border-blue-500 outline-none"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm text-zinc-400">Polaroid size: {settings.polaroidWidth}px</span>
+            <input
+              type="range"
+              min={WALL_SETTINGS_BOUNDS.polaroidWidth.min}
+              max={WALL_SETTINGS_BOUNDS.polaroidWidth.max}
+              value={settings.polaroidWidth}
+              onChange={(e) => updateSettings({ polaroidWidth: Number(e.target.value) })}
+              className="mt-4 w-full accent-blue-600"
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={handleResetSettings}
+          className="mt-4 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+        >
+          Reset to defaults
+        </button>
+      </section>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {photos.map((photo) => {

@@ -30,42 +30,44 @@ const socket = io(API_URL);
 const MAX_CLIENT_FILE_BYTES = parseNumberEnv(import.meta.env.VITE_MAX_UPLOAD_BYTES, 4 * 1024 * 1024);
 const MAX_CLIENT_FILE_MB = Math.round((MAX_CLIENT_FILE_BYTES / (1024 * 1024)) * 10) / 10;
 
-const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
-  if (!photo?.imageUrl || photo.imageUrl.startsWith('data:')) {
-    return photo;
-  }
+// Resolve a possibly-relative/loopback URL to an absolute URL against the API base.
+const toAbsoluteUrl = (url: string): string => {
+  if (!url || url.startsWith('data:')) return url;
 
   const apiBase = API_URL.replace(/\/+$/, '');
 
-  const upgradeToHttpsIfNeeded = (url: string) => {
-    if (typeof window === 'undefined') return url;
-    if (window.location.protocol !== 'https:') return url;
-    if (url.startsWith('http://')) {
-      return `https://${url.slice('http://'.length)}`;
+  const upgradeToHttpsIfNeeded = (u: string) => {
+    if (typeof window === 'undefined') return u;
+    if (window.location.protocol !== 'https:') return u;
+    if (u.startsWith('http://')) {
+      return `https://${u.slice('http://'.length)}`;
     }
-    return url;
+    return u;
   };
 
   try {
-    let imageUrl = photo.imageUrl.trim();
-
-    if (/^https?:\/\//i.test(imageUrl)) {
-      const parsed = new URL(imageUrl);
+    let out = url.trim();
+    if (/^https?:\/\//i.test(out)) {
+      const parsed = new URL(out);
       // Only rewrite loopback URLs (e.g. bad data from dev). Do not force every absolute
-      // URL onto VITE_API_URL — that breaks production when the API host differs from the
-      // static site (Render) and would replace a correct API URL with the wrong origin.
+      // URL onto the API base — that breaks production when the API host differs from the
+      // static site and would replace a correct API URL with the wrong origin.
       if (isLoopbackHost(parsed.hostname)) {
         const apiOrigin = new URL(apiBase).origin;
-        imageUrl = `${apiOrigin}${parsed.pathname}${parsed.search}`;
+        out = `${apiOrigin}${parsed.pathname}${parsed.search}`;
       }
-      return { ...photo, imageUrl: upgradeToHttpsIfNeeded(imageUrl) };
+      return upgradeToHttpsIfNeeded(out);
     }
-
-    const absolute = new URL(imageUrl, apiBase).toString();
-    return { ...photo, imageUrl: upgradeToHttpsIfNeeded(absolute) };
+    return upgradeToHttpsIfNeeded(new URL(out, apiBase).toString());
   } catch {
-    return photo;
+    return url;
   }
+};
+
+const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
+  if (!photo?.imageUrl) return photo;
+  const imageUrl = toAbsoluteUrl(photo.imageUrl);
+  return imageUrl === photo.imageUrl ? photo : { ...photo, imageUrl };
 };
 
 const normalizePhotoCollection = (items: PhotoEntry[]): PhotoEntry[] =>
@@ -195,7 +197,11 @@ export const getWallSettings = async (): Promise<WallSettings> => {
     const res = await fetch(`${API_URL}/api/settings`);
     if (!res.ok) throw new Error('Failed to fetch settings');
     const data = await res.json();
-    return { ...WALL_SETTINGS_DEFAULTS, ...data };
+    const merged = { ...WALL_SETTINGS_DEFAULTS, ...data } as WallSettings;
+    if (merged.background?.type === 'custom' && merged.background.value) {
+      merged.background = { type: 'custom', value: toAbsoluteUrl(merged.background.value) };
+    }
+    return merged;
   } catch (e) {
     console.error('Failed to load wall settings', e);
     return { ...WALL_SETTINGS_DEFAULTS };
@@ -225,6 +231,33 @@ export const subscribeToSettings = (callback: (settings: WallSettings) => void) 
   return () => {
     socket.off('settings_update', callback);
   };
+};
+
+export const uploadBackground = async (
+  dataUrl: string
+): Promise<{ success: boolean; url?: string; error?: string }> => {
+  try {
+    const res = await fetch(`${API_URL}/api/background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    if (!res.ok) {
+      let message = 'Failed to upload background';
+      try {
+        const payload = await res.json();
+        if (payload?.error) message = payload.error;
+      } catch {
+        // ignore non-JSON error bodies
+      }
+      return { success: false, error: message };
+    }
+    const data = await res.json();
+    return { success: true, url: toAbsoluteUrl(data.url) };
+  } catch (e) {
+    console.error('Error uploading background', e);
+    return { success: false, error: 'Unable to reach server' };
+  }
 };
 
 // Helper to compress images before storage

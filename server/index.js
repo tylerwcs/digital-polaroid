@@ -358,17 +358,21 @@ app.post('/api/background', async (req, res) => {
       return res.status(400).json({ error: 'Malformed image data' });
     }
 
-    // Keep only the most-recent custom background: remove any prior bg-* files.
-    try {
-      const files = await fs.readdir(UPLOAD_DIR);
-      await Promise.all(files.filter((f) => f.startsWith('bg-')).map((f) => deleteFileIfExists(f)));
-    } catch (err) {
-      if (err.code !== 'ENOENT') console.error('Failed to clear old backgrounds:', err);
-    }
-
     const extension = decoded.mime === 'image/png' ? 'png' : 'jpg';
     const fileName = `bg-${Date.now()}.${extension}`;
     await fs.writeFile(fullImagePath(fileName), decoded.buffer);
+
+    // Keep only the most-recent custom background: remove any OTHER bg-* files.
+    // Done AFTER the write so a failed write never leaves the wall with no
+    // background file.
+    try {
+      const files = await fs.readdir(UPLOAD_DIR);
+      await Promise.all(
+        files.filter((f) => f.startsWith('bg-') && f !== fileName).map((f) => deleteFileIfExists(f)),
+      );
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.error('Failed to clear old backgrounds:', err);
+    }
 
     return res.status(201).json({ url: buildImageUrl(fileName) });
   } catch (error) {

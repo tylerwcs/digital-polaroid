@@ -49,11 +49,12 @@ const AdminView: React.FC = () => {
   };
 
   const updateSettings = (patch: Partial<WallSettings>) => {
-    setSettings(prev => {
-      const next = { ...prev, ...patch };
-      persistSettings(next);
-      return next;
-    });
+    // Keep the state updater pure — compute the next value from the current
+    // settings (fresh in this render's closure) and fire the debounced save
+    // separately, rather than side-effecting inside setSettings.
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    persistSettings(next);
   };
 
   const handleResetSettings = () => {

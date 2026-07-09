@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos, getWallSettings, saveWallSettings, subscribeToSettings, uploadBackground } from '../services/storageService';
-import { PhotoEntry, WallSettings, WallBackground, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS } from '../types';
+import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS } from '../types';
 import { BACKGROUND_PRESETS } from '../constants/backgrounds';
 import { useToast } from '../context/ToastContext';
 
@@ -66,9 +66,13 @@ const AdminView: React.FC = () => {
     saveWallSettings(WALL_SETTINGS_DEFAULTS);
   };
 
-  // Keep the source selector in sync when settings load or change elsewhere.
+  // Reflect the settings' background type in the source selector, but don't yank
+  // the admin out of the custom-image panel (which intentionally doesn't persist
+  // until an upload completes) when an unrelated/echoed settings update lands.
   useEffect(() => {
-    setBgSource(settings.background.type);
+    setBgSource((prev) =>
+      prev === 'custom' && settings.background.type !== 'custom' ? prev : settings.background.type,
+    );
   }, [settings.background.type]);
 
   const handleBackgroundFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,6 +222,7 @@ const AdminView: React.FC = () => {
                   type="radio"
                   name="bgSource"
                   checked={bgSource === opt}
+                  disabled={isUploadingBg}
                   onChange={() => {
                     setBgSource(opt);
                     if (opt === 'preset') {

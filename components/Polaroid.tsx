@@ -23,6 +23,9 @@ export const Polaroid: React.FC<PolaroidProps> = ({
 
   // Uniform-scale path (used by wall-6): all dimensions are proportional to
   // width off a 180px base, so the card's ratio is preserved at any size.
+  // 180 is the width at which these values match the size="small" preset below.
+  // A few sub-pixel decorative details (shadow-xl, the 1px image border) are
+  // intentionally left unscaled — the difference is invisible at any real size.
   if (typeof width === 'number') {
     const s = width / 180;
     const px = (n: number) => `${n * s}px`;

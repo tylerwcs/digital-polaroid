@@ -362,15 +362,27 @@ async function saveUploadedImage(image, prefix) {
 
 async function resolveDownloadBackgroundBuffer(urlValue) {
   const uploadsPrefix = `${UPLOAD_URL_BASE}/`;
-  if (typeof urlValue === 'string' && urlValue.startsWith(uploadsPrefix)) {
-    const safe = path.basename(urlValue.slice(uploadsPrefix.length));
+  // Extract the path portion so absolute URLs (PUBLIC_BASE_URL, or the client's
+  // URL-absolutization) match the uploads prefix the same as relative ones.
+  let pathPart = typeof urlValue === 'string' ? urlValue : '';
+  if (/^https?:\/\//i.test(pathPart)) {
+    try {
+      pathPart = new URL(pathPart).pathname;
+    } catch {
+      // keep the raw string
+    }
+  }
+
+  if (pathPart.startsWith(uploadsPrefix)) {
+    const safe = path.basename(pathPart.slice(uploadsPrefix.length));
     try {
       return await fs.readFile(path.join(UPLOAD_DIR, safe));
     } catch {
       // fall through to the bundled default
     }
   }
-  const name = typeof urlValue === 'string' && urlValue ? path.basename(urlValue) : 'downloadBG.png';
+
+  const name = pathPart ? path.basename(pathPart) : 'downloadBG.png';
   const candidates = [
     path.join(DIST_DIR, name),
     path.resolve(__dirname, '..', 'public', name),

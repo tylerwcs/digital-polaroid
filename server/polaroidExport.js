@@ -333,3 +333,40 @@ export function canExportPolaroid(photo) {
   const cap = typeof photo.caption === 'string' ? photo.caption.trim() : '';
   return cap.length > 0;
 }
+
+// —— Download composite (polaroid centered on a branded background) ——
+const DL_POLAROID_WIDTH_FRACTION = 0.62;      // polaroid width vs background width
+const DL_POLAROID_MAX_HEIGHT_FRACTION = 0.70; // cap so tall (text-only) cards still fit
+const DL_POLAROID_CENTER_Y_FRACTION = 0.54;   // vertical center within the open area
+
+/**
+ * Render the polaroid for `photo` and composite it centered onto `bgBuffer`.
+ * Output matches the background's native dimensions.
+ * @param {object} photo - server photo record
+ * @param {Buffer} bgBuffer - the download background image bytes
+ * @param {object} deps - same deps as renderPolaroidPng
+ * @returns {Promise<Buffer>} PNG
+ */
+export async function renderPolaroidDownload(photo, bgBuffer, deps) {
+  const polaroidBuf = await renderPolaroidPng(photo, deps);
+  const [bg, polaroid] = await Promise.all([loadImage(bgBuffer), loadImage(polaroidBuf)]);
+
+  const canvas = createCanvas(bg.width, bg.height);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bg, 0, 0, bg.width, bg.height);
+
+  let targetW = Math.round(bg.width * DL_POLAROID_WIDTH_FRACTION);
+  let scale = targetW / polaroid.width;
+  let drawH = Math.round(polaroid.height * scale);
+  const maxH = Math.round(bg.height * DL_POLAROID_MAX_HEIGHT_FRACTION);
+  if (drawH > maxH) {
+    drawH = maxH;
+    scale = drawH / polaroid.height;
+    targetW = Math.round(polaroid.width * scale);
+  }
+  const x = Math.round((bg.width - targetW) / 2);
+  const y = Math.round(bg.height * DL_POLAROID_CENTER_Y_FRACTION - drawH / 2);
+  ctx.drawImage(polaroid, x, y, targetW, drawH);
+
+  return canvas.toBuffer('image/png');
+}

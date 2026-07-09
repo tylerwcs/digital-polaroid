@@ -192,16 +192,23 @@ export const subscribeToDelete = (callback: (id: string) => void) => {
   };
 };
 
+// Fill in defaults and resolve a custom background's image URL to absolute.
+// Applied to BOTH the initial fetch and the live socket push so a broadcast can't
+// clobber a resolved URL with the server's raw relative path (split-host safety).
+const hydrateWallSettings = (data: Partial<WallSettings>): WallSettings => {
+  const merged = { ...WALL_SETTINGS_DEFAULTS, ...data } as WallSettings;
+  if (merged.background?.type === 'custom' && merged.background.value) {
+    merged.background = { type: 'custom', value: toAbsoluteUrl(merged.background.value) };
+  }
+  return merged;
+};
+
 export const getWallSettings = async (): Promise<WallSettings> => {
   try {
     const res = await fetch(`${API_URL}/api/settings`);
     if (!res.ok) throw new Error('Failed to fetch settings');
     const data = await res.json();
-    const merged = { ...WALL_SETTINGS_DEFAULTS, ...data } as WallSettings;
-    if (merged.background?.type === 'custom' && merged.background.value) {
-      merged.background = { type: 'custom', value: toAbsoluteUrl(merged.background.value) };
-    }
-    return merged;
+    return hydrateWallSettings(data);
   } catch (e) {
     console.error('Failed to load wall settings', e);
     return { ...WALL_SETTINGS_DEFAULTS };
@@ -227,9 +234,12 @@ export const saveWallSettings = async (
 };
 
 export const subscribeToSettings = (callback: (settings: WallSettings) => void) => {
-  socket.on('settings_update', callback);
+  const handler = (settings: Partial<WallSettings>) => {
+    callback(hydrateWallSettings(settings));
+  };
+  socket.on('settings_update', handler);
   return () => {
-    socket.off('settings_update', callback);
+    socket.off('settings_update', handler);
   };
 };
 

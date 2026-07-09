@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { getPhotos, subscribeToUpdates, subscribeToDelete } from '../services/storageService';
-import { PhotoEntry } from '../types';
+import { getPhotos, subscribeToUpdates, subscribeToDelete, getWallSettings, subscribeToSettings } from '../services/storageService';
+import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS } from '../types';
 import { Polaroid } from './Polaroid';
 
 /**
@@ -15,8 +15,9 @@ const MarqueeColumn: React.FC<{
   speed?: number,
   delay?: number,
   newIds?: Set<string>,
-  onEntrancePlayed?: (id: string) => void
-}> = ({ photos, speed = 0.5, delay = 0, newIds, onEntrancePlayed }) => {
+  onEntrancePlayed?: (id: string) => void,
+  polaroidWidth: number
+}> = ({ photos, speed = 0.5, delay = 0, newIds, onEntrancePlayed, polaroidWidth }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const yPos = useRef(0);
   const reqId = useRef<number>();
@@ -180,8 +181,8 @@ const MarqueeColumn: React.FC<{
               >
                 <Polaroid
                   photo={photo}
-                  size="small"
-                  className="w-full max-w-[180px] hover:z-10 transition-transform hover:scale-105 hover:rotate-0 shadow-lg"
+                  width={polaroidWidth}
+                  className="hover:z-10 transition-transform hover:scale-105 hover:rotate-0 shadow-lg"
                 />
               </div>
             );
@@ -194,27 +195,39 @@ const MarqueeColumn: React.FC<{
 
 const DisplayViewGrid: React.FC = () => {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
-  const [numCols, setNumCols] = useState(6);
+  const [responsiveCols, setResponsiveCols] = useState(6);
+  const [settings, setSettings] = useState<WallSettings>(WALL_SETTINGS_DEFAULTS);
   const [uploadUrl, setUploadUrl] = useState<string>('');
   // IDs of photos that just arrived, so they can play the pop-in animation once.
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Handle Responsive Column Count - optimized for 6 columns on larger screens
+  // Handle Responsive Column Count. Ladder is capped later by settings.maxColumns.
   useEffect(() => {
     const handleResize = () => {
       const w = window.innerWidth;
-      if (w >= 1800) setNumCols(6);
-      else if (w >= 1500) setNumCols(5);
-      else if (w >= 1200) setNumCols(4);
-      else if (w >= 900) setNumCols(3);
-      else if (w >= 600) setNumCols(2);
-      else setNumCols(1);
+      if (w >= 2400) setResponsiveCols(8);
+      else if (w >= 2100) setResponsiveCols(7);
+      else if (w >= 1800) setResponsiveCols(6);
+      else if (w >= 1500) setResponsiveCols(5);
+      else if (w >= 1200) setResponsiveCols(4);
+      else if (w >= 900) setResponsiveCols(3);
+      else if (w >= 600) setResponsiveCols(2);
+      else setResponsiveCols(1);
     };
     handleResize(); // Init
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const numCols = Math.min(settings.maxColumns, responsiveCols);
+
+  // Load wall settings and keep them live.
+  useEffect(() => {
+    getWallSettings().then(setSettings);
+    const unsubscribe = subscribeToSettings(setSettings);
+    return unsubscribe;
   }, []);
 
   // Determine URL to encode in QR code
@@ -348,6 +361,7 @@ const DisplayViewGrid: React.FC = () => {
                       delay={colIndex * 2}
                       newIds={newIds}
                       onEntrancePlayed={handleEntrancePlayed}
+                      polaroidWidth={settings.polaroidWidth}
                    />
                   
                   {/* 

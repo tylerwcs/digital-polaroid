@@ -324,9 +324,9 @@ const UploadView: React.FC = () => {
                   {/* Signature Canvas Over Photo */}
                   <div 
                     ref={canvasContainerRef} 
-                    className={`absolute inset-0 z-30 cursor-crosshair ${stage === 'spotlight' && showSignature ? 'block' : 'hidden'}`}
+                    className={`absolute inset-0 z-30 cursor-crosshair ${stage === 'spotlight' && !postedPhotoId && showSignature ? 'block' : 'hidden'}`}
                   >
-                    {stage === 'spotlight' && showSignature && canvasSize.width > 0 && (
+                    {stage === 'spotlight' && !postedPhotoId && showSignature && canvasSize.width > 0 && (
                       <SignatureCanvas 
                         ref={sigCanvasRef}
                         penColor={signatureColor}
@@ -339,7 +339,7 @@ const UploadView: React.FC = () => {
                       />
                     )}
                     {/* Loading state while canvas measures */}
-                    {stage === 'spotlight' && showSignature && canvasSize.width === 0 && (
+                    {stage === 'spotlight' && !postedPhotoId && showSignature && canvasSize.width === 0 && (
                        <div className="absolute inset-0 bg-black/5 animate-pulse" />
                     )}
                   </div>
@@ -370,7 +370,7 @@ const UploadView: React.FC = () => {
               />
 
               {/* Signature Controls */}
-              {stage === 'spotlight' && selectedImage && (
+              {stage === 'spotlight' && !postedPhotoId && selectedImage && (
                 <div className="mt-1 flex flex-col items-center relative z-40">
                   {!showSignature ? (
                     <button

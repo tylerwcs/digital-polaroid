@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-import { PhotoEntry } from '../types';
+import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS } from '../types';
 
 const parseNumberEnv = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -187,6 +187,43 @@ export const subscribeToDelete = (callback: (id: string) => void) => {
   socket.on('delete_photo', callback);
   return () => {
     socket.off('delete_photo', callback);
+  };
+};
+
+export const getWallSettings = async (): Promise<WallSettings> => {
+  try {
+    const res = await fetch(`${API_URL}/api/settings`);
+    if (!res.ok) throw new Error('Failed to fetch settings');
+    const data = await res.json();
+    return { ...WALL_SETTINGS_DEFAULTS, ...data };
+  } catch (e) {
+    console.error('Failed to load wall settings', e);
+    return { ...WALL_SETTINGS_DEFAULTS };
+  }
+};
+
+export const saveWallSettings = async (
+  settings: Partial<WallSettings>
+): Promise<{ success: boolean; error?: string; settings?: WallSettings }> => {
+  try {
+    const res = await fetch(`${API_URL}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (!res.ok) return { success: false, error: 'Failed to save settings' };
+    const data = await res.json();
+    return { success: true, settings: data };
+  } catch (e) {
+    console.error('Error saving wall settings', e);
+    return { success: false, error: 'Unable to reach server' };
+  }
+};
+
+export const subscribeToSettings = (callback: (settings: WallSettings) => void) => {
+  socket.on('settings_update', callback);
+  return () => {
+    socket.off('settings_update', callback);
   };
 };
 

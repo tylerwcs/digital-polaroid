@@ -8,7 +8,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
-import { renderPolaroidPng, canExportPolaroid } from './polaroidExport.js';
+import { renderPolaroidPng, renderPolaroidDownload, canExportPolaroid } from './polaroidExport.js';
 import { captionModerationError } from './moderation.js';
 import { WALL_SETTINGS_DEFAULTS, normalizeWallSettings } from './settings.js';
 
@@ -360,6 +360,33 @@ async function saveUploadedImage(image, prefix) {
   return { url: buildImageUrl(fileName) };
 }
 
+async function resolveDownloadBackgroundBuffer(urlValue) {
+  const uploadsPrefix = `${UPLOAD_URL_BASE}/`;
+  if (typeof urlValue === 'string' && urlValue.startsWith(uploadsPrefix)) {
+    const safe = path.basename(urlValue.slice(uploadsPrefix.length));
+    try {
+      return await fs.readFile(path.join(UPLOAD_DIR, safe));
+    } catch {
+      // fall through to the bundled default
+    }
+  }
+  const name = typeof urlValue === 'string' && urlValue ? path.basename(urlValue) : 'downloadBG.png';
+  const candidates = [
+    path.join(DIST_DIR, name),
+    path.resolve(__dirname, '..', 'public', name),
+    path.join(DIST_DIR, 'downloadBG.png'),
+    path.resolve(__dirname, '..', 'public', 'downloadBG.png'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return await fs.readFile(candidate);
+    } catch {
+      // try next
+    }
+  }
+  throw new Error('Download background asset not found');
+}
+
 // API Routes
 app.get('/api/photos', (req, res) => {
   res.json(photos.map(sanitizePhoto));
@@ -534,6 +561,34 @@ app.get('/api/photos/download-all', async (req, res) => {
   }
 
   await archive.finalize();
+});
+
+app.get('/api/photos/:id/download', async (req, res) => {
+  try {
+    const photo = photos.find((p) => p.id === req.params.id);
+    if (!photo) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    let bgBuffer;
+    try {
+      bgBuffer = await resolveDownloadBackgroundBuffer(wallSettings.downloadBackground);
+    } catch (err) {
+      console.error('Download background unavailable:', err);
+      return res.status(500).json({ error: 'Download background unavailable' });
+    }
+
+    const polaroidDeps = { __dirname, fullImagePath, decodeBase64Image };
+    const png = await renderPolaroidDownload(photo, bgBuffer, polaroidDeps);
+
+    const safeId = String(photo.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', `attachment; filename="polaroid-${safeId}.png"`);
+    return res.end(png);
+  } catch (error) {
+    console.error('Polaroid download error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // SPA fallback: serve index.html for client-side routes (e.g. /wall-6) so a

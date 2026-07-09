@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
-import { compressImage, savePhoto } from '../services/storageService';
+import { compressImage, savePhoto, downloadPolaroid } from '../services/storageService';
 import { validateCaption } from '../services/moderationService';
 import { PhotoEntry } from '../types';
 import { useToast } from '../context/ToastContext';
@@ -21,6 +21,8 @@ const UploadView: React.FC = () => {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [isUploading, setIsUploading] = useState(false);
   const [stage, setStage] = useState<'idle' | 'ejecting' | 'spotlight'>('idle');
+  const [postedPhotoId, setPostedPhotoId] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Measure the canvas container when signature mode is activated
   React.useEffect(() => {
@@ -119,16 +121,9 @@ const UploadView: React.FC = () => {
       const result = await savePhoto(newPhoto);
       
       if (result.success) {
-        setTimeout(() => {
-          setIsUploading(false);
-          setSelectedImage(null);
-          setCaption('');
-          setShowSignature(false);
-          setSignatureColor('black');
-          sigCanvasRef.current?.clear();
-          setStage('idle');
-          showToast("Posted to the wall!", "success");
-        }, 500);
+        setIsUploading(false);
+        setPostedPhotoId(result.photo?.id ?? newPhoto.id);
+        showToast("Posted to the wall!", "success");
       } else {
         setIsUploading(false);
         showToast(result.error || "Could not save photo. Check connection.", "error");
@@ -138,6 +133,22 @@ const UploadView: React.FC = () => {
       setIsUploading(false);
       showToast("An unexpected error occurred.", "error");
     }
+  };
+
+  const handleDownload = async () => {
+    if (!postedPhotoId) return;
+    setIsDownloading(true);
+    const res = await downloadPolaroid(postedPhotoId);
+    setIsDownloading(false);
+    if (!res.success) {
+      showToast(res.error || "Could not generate your polaroid", "error");
+    }
+  };
+
+  const handleDone = () => {
+    setPostedPhotoId(null);
+    setIsDownloading(false);
+    removeImage();
   };
 
   const triggerCamera = () => {
@@ -404,20 +415,40 @@ const UploadView: React.FC = () => {
                 mt-4 sm:mt-6 flex gap-3 transition-all duration-500 delay-300
                 ${stage === 'spotlight' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}
             `}>
-              <button
-                onClick={removeImage}
-                disabled={isUploading}
-                className="px-4 py-2 rounded-full font-bold text-base text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white px-6 py-2 rounded-full font-bold text-base shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                  {isUploading ? 'Posting...' : 'Post to Wall'}
-              </button>
+              {postedPhotoId ? (
+                <>
+                  <button
+                    onClick={handleDone}
+                    className="px-4 py-2 rounded-full font-bold text-base text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
+                  >
+                    Done
+                  </button>
+                  <button
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    className="bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white px-6 py-2 rounded-full font-bold text-base shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDownloading ? 'Preparing...' : 'Download my polaroid'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={removeImage}
+                    disabled={isUploading}
+                    className="px-4 py-2 rounded-full font-bold text-base text-zinc-400 hover:text-white hover:bg-white/10 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!canSubmit}
+                    className="bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-white px-6 py-2 rounded-full font-bold text-base shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUploading ? 'Posting...' : 'Post to Wall'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
           

@@ -71,6 +71,8 @@ const UploadView: React.FC = () => {
     setShowSignature(false);
     setSignatureColor('black');
     sigCanvasRef.current?.clear();
+    setPostedPhotoId(null);
+    setIsDownloading(false);
   };
 
   const handleTextOnly = () => {
@@ -146,8 +148,6 @@ const UploadView: React.FC = () => {
   };
 
   const handleDone = () => {
-    setPostedPhotoId(null);
-    setIsDownloading(false);
     removeImage();
   };
 
@@ -363,7 +363,7 @@ const UploadView: React.FC = () => {
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 placeholder="Write a note..."
-                disabled={stage !== 'spotlight'}
+                disabled={stage !== 'spotlight' || !!postedPhotoId}
                 autoFocus={stage === 'spotlight'}
                 className="w-full bg-transparent border-none focus:ring-0 outline-none text-gray-800 font-marker text-3xl text-center resize-none h-14 leading-tight placeholder:text-gray-300 relative z-40"
                 maxLength={60}

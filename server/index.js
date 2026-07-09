@@ -19,6 +19,7 @@ const MAX_PHOTO_HISTORY = parseInt(process.env.MAX_PHOTO_HISTORY || '150', 10);
 const MAX_CONCURRENT_UPLOADS = parseInt(process.env.MAX_CONCURRENT_UPLOADS || '8', 10);
 const MAX_IMAGE_MB = parseFloat(process.env.MAX_IMAGE_MB || '3');
 const JSON_BODY_LIMIT_MB = parseFloat(process.env.JSON_BODY_LIMIT_MB || '5');
+const MAX_BG_IMAGE_MB = parseFloat(process.env.MAX_BG_IMAGE_MB || '8');
 const SAVE_DEBOUNCE_MS = parseInt(process.env.SAVE_DEBOUNCE_MS || '1000', 10);
 const ENABLE_DISK_CACHE = (process.env.ENABLE_DISK_CACHE || 'false').toLowerCase() === 'true';
 
@@ -44,6 +45,7 @@ const rawPublicBase =
 const PUBLIC_BASE_URL = rawPublicBase.replace(/\/+$/, '');
 
 const MAX_IMAGE_BYTES = Math.floor(MAX_IMAGE_MB * 1024 * 1024);
+const MAX_BG_IMAGE_BYTES = Math.floor(MAX_BG_IMAGE_MB * 1024 * 1024);
 const JSON_BODY_LIMIT = `${JSON_BODY_LIMIT_MB}mb`;
 
 const app = express();
@@ -72,6 +74,10 @@ const DIST_DIR = path.resolve(__dirname, '..', 'dist');
 const SERVE_FRONTEND = existsSync(path.join(DIST_DIR, 'index.html'));
 
 app.use(cors());
+// Larger body limit for base64 background-image uploads, scoped to that route only.
+// Registered before the global parser so it consumes the body first; the global
+// express.json then no-ops (body-parser skips when req._body is already set).
+app.use('/api/background', express.json({ limit: '12mb' }));
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use(UPLOAD_URL_BASE, express.static(UPLOAD_DIR, {
   maxAge: 1000 * 60 * 5,
@@ -336,6 +342,39 @@ app.put('/api/settings', async (req, res) => {
   await saveSettings();
   io.emit('settings_update', wallSettings);
   res.json(wallSettings);
+});
+
+app.post('/api/background', async (req, res) => {
+  try {
+    const { image } = req.body || {};
+    if (typeof image !== 'string' || !image.startsWith('data:image')) {
+      return res.status(400).json({ error: 'Unsupported image format' });
+    }
+    if (approxBytesFromDataUri(image) > MAX_BG_IMAGE_BYTES) {
+      return res.status(400).json({ error: `Image exceeds ${MAX_BG_IMAGE_MB}MB limit` });
+    }
+    const decoded = decodeBase64Image(image);
+    if (!decoded) {
+      return res.status(400).json({ error: 'Malformed image data' });
+    }
+
+    // Keep only the most-recent custom background: remove any prior bg-* files.
+    try {
+      const files = await fs.readdir(UPLOAD_DIR);
+      await Promise.all(files.filter((f) => f.startsWith('bg-')).map((f) => deleteFileIfExists(f)));
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.error('Failed to clear old backgrounds:', err);
+    }
+
+    const extension = decoded.mime === 'image/png' ? 'png' : 'jpg';
+    const fileName = `bg-${Date.now()}.${extension}`;
+    await fs.writeFile(fullImagePath(fileName), decoded.buffer);
+
+    return res.status(201).json({ url: buildImageUrl(fileName) });
+  } catch (error) {
+    console.error('Background upload error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.post('/api/photos', async (req, res) => {

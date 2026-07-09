@@ -175,6 +175,37 @@ export const downloadAllPhotos = async (): Promise<{ success: boolean; error?: s
   }
 };
 
+export const downloadPolaroid = async (photoId: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const response = await fetch(`${API_URL}/api/photos/${photoId}/download`);
+    if (!response.ok) {
+      let message = 'Failed to generate your polaroid';
+      try {
+        const payload = await response.json();
+        if (payload?.error) message = payload.error;
+      } catch {
+        // ignore non-JSON error bodies
+      }
+      return { success: false, error: message };
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `polaroid-${photoId}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error downloading polaroid', error);
+    return { success: false, error: 'Unable to reach server' };
+  }
+};
+
 export const subscribeToUpdates = (callback: (photo: PhotoEntry) => void) => {
   const handler = (photo: PhotoEntry) => {
     callback(toAbsoluteImageUrl(photo));
@@ -266,6 +297,33 @@ export const uploadBackground = async (
     return { success: true, url: toAbsoluteUrl(data.url) };
   } catch (e) {
     console.error('Error uploading background', e);
+    return { success: false, error: 'Unable to reach server' };
+  }
+};
+
+export const uploadDownloadBackground = async (
+  dataUrl: string
+): Promise<{ success: boolean; url?: string; error?: string }> => {
+  try {
+    const res = await fetch(`${API_URL}/api/download-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    if (!res.ok) {
+      let message = 'Failed to upload download background';
+      try {
+        const payload = await res.json();
+        if (payload?.error) message = payload.error;
+      } catch {
+        // ignore non-JSON error bodies
+      }
+      return { success: false, error: message };
+    }
+    const data = await res.json();
+    return { success: true, url: toAbsoluteUrl(data.url) };
+  } catch (e) {
+    console.error('Error uploading download background', e);
     return { success: false, error: 'Unable to reach server' };
   }
 };

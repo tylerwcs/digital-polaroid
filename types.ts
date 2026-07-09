@@ -16,11 +16,13 @@ export type WallBackground =
   | { type: 'custom'; value: string };
 
 export const DEFAULT_BACKGROUND: WallBackground = { type: 'preset', value: 'generali-boomerang' };
+export const DEFAULT_DOWNLOAD_BACKGROUND = '/downloadBG.png';
 
 export interface WallSettings {
   maxColumns: number;
   polaroidWidth: number;
   background: WallBackground;
+  downloadBackground: string;
 }
 
 // Client copy of the server defaults/bounds (crosses the ts/js boundary, so kept
@@ -29,6 +31,7 @@ export const WALL_SETTINGS_DEFAULTS: WallSettings = {
   maxColumns: 6,
   polaroidWidth: 180,
   background: DEFAULT_BACKGROUND,
+  downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND,
 };
 
 export const WALL_SETTINGS_BOUNDS = {

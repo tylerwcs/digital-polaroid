@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { getPhotos, subscribeToUpdates, subscribeToDelete, getWallSettings, subscribeToSettings } from '../services/storageService';
 import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS } from '../types';
 import { Polaroid } from './Polaroid';
+import { WallBackground } from './WallBackground';
 
 /**
  * MarqueeColumn Component
@@ -327,18 +328,7 @@ const DisplayViewGrid: React.FC = () => {
       
       {/* Background Wrapper */}
       <div className="flex-grow flex flex-col relative">
-        {/* Boomerang (forward+reverse) clip loops seamlessly with a single
-            video element — no crossfade, so the marquee never drops frames. */}
-        <video
-          className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          aria-hidden
-        >
-          <source src="/generali-bg-boomerang.mp4" type="video/mp4" />
-        </video>
+        <WallBackground background={settings.background} />
 
         <main 
           ref={containerRef}

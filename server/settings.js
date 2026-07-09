@@ -6,9 +6,14 @@ export const WALL_SETTINGS_BOUNDS = {
   polaroidWidth: { min: 100, max: 320 },
 };
 
+export const WALL_BACKGROUND_PRESET_IDS = ['generali-boomerang', 'generali', 'bg'];
+
+export const DEFAULT_BACKGROUND = { type: 'preset', value: 'generali-boomerang' };
+
 export const WALL_SETTINGS_DEFAULTS = {
   maxColumns: 6,
   polaroidWidth: 180,
+  background: DEFAULT_BACKGROUND,
 };
 
 const clamp = (value, min, max, fallback, round) => {
@@ -18,6 +23,22 @@ const clamp = (value, min, max, fallback, round) => {
   if (!Number.isFinite(n)) return fallback;
   const v = round ? Math.round(n) : n;
   return Math.min(max, Math.max(min, v));
+};
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+const isValidBackground = (type, value) => {
+  if (type === 'color') return typeof value === 'string' && HEX_COLOR.test(value);
+  if (type === 'preset') return WALL_BACKGROUND_PRESET_IDS.includes(value);
+  if (type === 'custom') return typeof value === 'string' && value.length > 0 && value.length <= 2048;
+  return false;
+};
+
+// Accept a valid {type,value} pair (stripped to just those keys); otherwise keep base.
+const normalizeBackground = (bg, base) => {
+  if (!bg || typeof bg !== 'object') return base;
+  if (isValidBackground(bg.type, bg.value)) return { type: bg.type, value: bg.value };
+  return base;
 };
 
 const sanitize = (source, base) => ({
@@ -35,6 +56,7 @@ const sanitize = (source, base) => ({
     base.polaroidWidth,
     false,
   ),
+  background: normalizeBackground(source.background, base.background),
 });
 
 // Merge an untrusted patch over a base, clamping every field. Missing/invalid
@@ -49,5 +71,8 @@ export const normalizeWallSettings = (patch = {}, base = WALL_SETTINGS_DEFAULTS)
     polaroidWidth: 'polaroidWidth' in source
       ? clamp(source.polaroidWidth, WALL_SETTINGS_BOUNDS.polaroidWidth.min, WALL_SETTINGS_BOUNDS.polaroidWidth.max, safeBase.polaroidWidth, false)
       : safeBase.polaroidWidth,
+    background: 'background' in source
+      ? normalizeBackground(source.background, safeBase.background)
+      : safeBase.background,
   };
 };

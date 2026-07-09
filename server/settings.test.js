@@ -51,3 +51,17 @@ test('sanitizes a corrupt base object', () => {
 test('non-object patch is treated as empty', () => {
   assert.deepEqual(normalizeWallSettings(null), { maxColumns: 6, polaroidWidth: 180 });
 });
+
+test('null / boolean / array / whitespace inputs fall back to base', () => {
+  const base = { maxColumns: 4, polaroidWidth: 200 };
+  assert.equal(normalizeWallSettings({ maxColumns: null }, base).maxColumns, 4);
+  assert.equal(normalizeWallSettings({ maxColumns: true }, base).maxColumns, 4);
+  assert.equal(normalizeWallSettings({ maxColumns: [5] }, base).maxColumns, 4);
+  assert.equal(normalizeWallSettings({ maxColumns: '   ' }, base).maxColumns, 4);
+  assert.equal(normalizeWallSettings({ polaroidWidth: null }, base).polaroidWidth, 200);
+});
+
+test('numeric strings are still accepted', () => {
+  assert.equal(normalizeWallSettings({ maxColumns: '3' }).maxColumns, 3);
+  assert.equal(normalizeWallSettings({ polaroidWidth: '250' }).polaroidWidth, 250);
+});

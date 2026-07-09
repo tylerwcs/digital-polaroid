@@ -12,6 +12,8 @@ export const WALL_SETTINGS_DEFAULTS = {
 };
 
 const clamp = (value, min, max, fallback, round) => {
+  if (typeof value !== 'number' && typeof value !== 'string') return fallback;
+  if (typeof value === 'string' && value.trim() === '') return fallback;
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   const v = round ? Math.round(n) : n;

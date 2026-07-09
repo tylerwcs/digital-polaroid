@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos, getWallSettings, saveWallSettings, subscribeToSettings, uploadBackground } from '../services/storageService';
-import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS } from '../types';
+import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos, getWallSettings, saveWallSettings, subscribeToSettings, uploadBackground, uploadDownloadBackground } from '../services/storageService';
+import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS, DEFAULT_DOWNLOAD_BACKGROUND } from '../types';
 import { BACKGROUND_PRESETS } from '../constants/backgrounds';
 import { useToast } from '../context/ToastContext';
 
@@ -14,6 +14,7 @@ const AdminView: React.FC = () => {
   const saveTimer = useRef<number>();
   const [bgSource, setBgSource] = useState<'preset' | 'color' | 'custom'>(WALL_SETTINGS_DEFAULTS.background.type);
   const [isUploadingBg, setIsUploadingBg] = useState(false);
+  const [isUploadingDlBg, setIsUploadingDlBg] = useState(false);
 
   // Simple hardcoded password for demo purposes
   const ADMIN_PASSWORD = "admin"; 
@@ -106,6 +107,40 @@ const AdminView: React.FC = () => {
       showToast('Failed to read image', 'error');
     } finally {
       setIsUploadingBg(false);
+    }
+  };
+
+  const handleDownloadBgFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please choose an image file', 'error');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast('Image exceeds 8MB limit', 'error');
+      return;
+    }
+    setIsUploadingDlBg(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+      const result = await uploadDownloadBackground(dataUrl);
+      if (result.success && result.url) {
+        updateSettings({ downloadBackground: result.url });
+        showToast('Download background updated', 'success');
+      } else {
+        showToast(result.error || 'Failed to upload download background', 'error');
+      }
+    } catch {
+      showToast('Failed to read image', 'error');
+    } finally {
+      setIsUploadingDlBg(false);
     }
   };
 
@@ -283,6 +318,28 @@ const AdminView: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+
+        <div className="mt-6">
+          <span className="text-sm text-zinc-400">Download background</span>
+          <div className="mt-2">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleDownloadBgFile}
+              disabled={isUploadingDlBg}
+              className="text-sm text-zinc-300"
+            />
+            {isUploadingDlBg && <span className="ml-2 text-xs text-zinc-400">Uploading…</span>}
+            <p className="mt-2 text-xs text-zinc-500 break-all">Current: {settings.downloadBackground}</p>
+            <button
+              type="button"
+              onClick={() => updateSettings({ downloadBackground: DEFAULT_DOWNLOAD_BACKGROUND })}
+              className="mt-2 bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Use default
+            </button>
+          </div>
         </div>
 
         <button

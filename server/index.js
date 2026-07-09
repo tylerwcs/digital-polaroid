@@ -78,6 +78,7 @@ app.use(cors());
 // Registered before the global parser so it consumes the body first; the global
 // express.json then no-ops (body-parser skips when req._body is already set).
 app.use('/api/background', express.json({ limit: '12mb' }));
+app.use('/api/download-background', express.json({ limit: '12mb' }));
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use(UPLOAD_URL_BASE, express.static(UPLOAD_DIR, {
   maxAge: 1000 * 60 * 5,
@@ -326,6 +327,39 @@ const validatePhotoPayload = (photo) => {
   return null;
 };
 
+// Validate + persist a base64 image upload under `<prefix>-<ts>.<ext>`, keeping only
+// the newest file for that prefix (write-then-delete). Shared by the wall-background
+// (`bg`) and download-background (`dl`) upload routes. Returns { url } or { error }.
+async function saveUploadedImage(image, prefix) {
+  if (typeof image !== 'string' || !image.startsWith('data:image')) {
+    return { error: { status: 400, message: 'Unsupported image format' } };
+  }
+  if (approxBytesFromDataUri(image) > MAX_BG_IMAGE_BYTES) {
+    return { error: { status: 400, message: `Image exceeds ${MAX_BG_IMAGE_MB}MB limit` } };
+  }
+  const decoded = decodeBase64Image(image);
+  if (!decoded) {
+    return { error: { status: 400, message: 'Malformed image data' } };
+  }
+
+  const extension = decoded.mime === 'image/png' ? 'png' : 'jpg';
+  const fileName = `${prefix}-${Date.now()}.${extension}`;
+  await fs.writeFile(fullImagePath(fileName), decoded.buffer);
+
+  // Keep only the newest file for this prefix. Done AFTER the write so a failed
+  // write never leaves nothing behind.
+  try {
+    const files = await fs.readdir(UPLOAD_DIR);
+    await Promise.all(
+      files.filter((f) => f.startsWith(`${prefix}-`) && f !== fileName).map((f) => deleteFileIfExists(f)),
+    );
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.error(`Failed to clear old ${prefix} uploads:`, err);
+  }
+
+  return { url: buildImageUrl(fileName) };
+}
+
 // API Routes
 app.get('/api/photos', (req, res) => {
   res.json(photos.map(sanitizePhoto));
@@ -346,37 +380,22 @@ app.put('/api/settings', async (req, res) => {
 
 app.post('/api/background', async (req, res) => {
   try {
-    const { image } = req.body || {};
-    if (typeof image !== 'string' || !image.startsWith('data:image')) {
-      return res.status(400).json({ error: 'Unsupported image format' });
-    }
-    if (approxBytesFromDataUri(image) > MAX_BG_IMAGE_BYTES) {
-      return res.status(400).json({ error: `Image exceeds ${MAX_BG_IMAGE_MB}MB limit` });
-    }
-    const decoded = decodeBase64Image(image);
-    if (!decoded) {
-      return res.status(400).json({ error: 'Malformed image data' });
-    }
-
-    const extension = decoded.mime === 'image/png' ? 'png' : 'jpg';
-    const fileName = `bg-${Date.now()}.${extension}`;
-    await fs.writeFile(fullImagePath(fileName), decoded.buffer);
-
-    // Keep only the most-recent custom background: remove any OTHER bg-* files.
-    // Done AFTER the write so a failed write never leaves the wall with no
-    // background file.
-    try {
-      const files = await fs.readdir(UPLOAD_DIR);
-      await Promise.all(
-        files.filter((f) => f.startsWith('bg-') && f !== fileName).map((f) => deleteFileIfExists(f)),
-      );
-    } catch (err) {
-      if (err.code !== 'ENOENT') console.error('Failed to clear old backgrounds:', err);
-    }
-
-    return res.status(201).json({ url: buildImageUrl(fileName) });
+    const result = await saveUploadedImage(req.body?.image, 'bg');
+    if (result.error) return res.status(result.error.status).json({ error: result.error.message });
+    return res.status(201).json({ url: result.url });
   } catch (error) {
     console.error('Background upload error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/download-background', async (req, res) => {
+  try {
+    const result = await saveUploadedImage(req.body?.image, 'dl');
+    if (result.error) return res.status(result.error.status).json({ error: result.error.message });
+    return res.status(201).json({ url: result.url });
+  } catch (error) {
+    console.error('Download background upload error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

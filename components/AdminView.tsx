@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos, getWallSettings, saveWallSettings, subscribeToSettings } from '../services/storageService';
-import { PhotoEntry, WallSettings, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS } from '../types';
+import { getPhotos, deletePhoto, subscribeToUpdates, subscribeToDelete, downloadAllPhotos, getWallSettings, saveWallSettings, subscribeToSettings, uploadBackground } from '../services/storageService';
+import { PhotoEntry, WallSettings, WallBackground, WALL_SETTINGS_DEFAULTS, WALL_SETTINGS_BOUNDS } from '../types';
+import { BACKGROUND_PRESETS } from '../constants/backgrounds';
 import { useToast } from '../context/ToastContext';
 
 const AdminView: React.FC = () => {
@@ -11,6 +12,8 @@ const AdminView: React.FC = () => {
   const { showToast } = useToast();
   const [settings, setSettings] = useState<WallSettings>(WALL_SETTINGS_DEFAULTS);
   const saveTimer = useRef<number>();
+  const [bgSource, setBgSource] = useState<'preset' | 'color' | 'custom'>(WALL_SETTINGS_DEFAULTS.background.type);
+  const [isUploadingBg, setIsUploadingBg] = useState(false);
 
   // Simple hardcoded password for demo purposes
   const ADMIN_PASSWORD = "admin"; 
@@ -61,6 +64,45 @@ const AdminView: React.FC = () => {
     window.clearTimeout(saveTimer.current);
     setSettings(WALL_SETTINGS_DEFAULTS);
     saveWallSettings(WALL_SETTINGS_DEFAULTS);
+  };
+
+  // Keep the source selector in sync when settings load or change elsewhere.
+  useEffect(() => {
+    setBgSource(settings.background.type);
+  }, [settings.background.type]);
+
+  const handleBackgroundFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Please choose an image file', 'error');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast('Image exceeds 8MB limit', 'error');
+      return;
+    }
+    setIsUploadingBg(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+      const result = await uploadBackground(dataUrl);
+      if (result.success && result.url) {
+        updateSettings({ background: { type: 'custom' as const, value: result.url } });
+        showToast('Background updated', 'success');
+      } else {
+        showToast(result.error || 'Failed to upload background', 'error');
+      }
+    } catch {
+      showToast('Failed to read image', 'error');
+    } finally {
+      setIsUploadingBg(false);
+    }
   };
 
   const loadPhotos = async () => {
@@ -166,6 +208,78 @@ const AdminView: React.FC = () => {
             />
           </label>
         </div>
+
+        <div className="mt-6">
+          <span className="text-sm text-zinc-400">Background</span>
+          <div className="mt-2 flex flex-wrap gap-4 text-sm">
+            {(['preset', 'color', 'custom'] as const).map((opt) => (
+              <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="bgSource"
+                  checked={bgSource === opt}
+                  onChange={() => {
+                    setBgSource(opt);
+                    if (opt === 'preset') {
+                      updateSettings({
+                        background: {
+                          type: 'preset' as const,
+                          value: settings.background.type === 'preset' ? settings.background.value : BACKGROUND_PRESETS[0].id,
+                        },
+                      });
+                    } else if (opt === 'color') {
+                      updateSettings({
+                        background: {
+                          type: 'color' as const,
+                          value: settings.background.type === 'color' ? settings.background.value : '#000000',
+                        },
+                      });
+                    }
+                  }}
+                />
+                <span>{opt === 'custom' ? 'Custom image' : opt === 'color' ? 'Solid color' : 'Preset'}</span>
+              </label>
+            ))}
+          </div>
+
+          {bgSource === 'preset' && (
+            <select
+              value={settings.background.type === 'preset' ? settings.background.value : BACKGROUND_PRESETS[0].id}
+              onChange={(e) => updateSettings({ background: { type: 'preset' as const, value: e.target.value } })}
+              className="mt-3 w-full bg-zinc-950 text-white border border-zinc-700 rounded-lg p-2 focus:border-blue-500 outline-none"
+            >
+              {BACKGROUND_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+          )}
+
+          {bgSource === 'color' && (
+            <input
+              type="color"
+              value={settings.background.type === 'color' ? settings.background.value : '#000000'}
+              onChange={(e) => updateSettings({ background: { type: 'color' as const, value: e.target.value } })}
+              className="mt-3 h-10 w-20 bg-zinc-950 border border-zinc-700 rounded-lg cursor-pointer"
+            />
+          )}
+
+          {bgSource === 'custom' && (
+            <div className="mt-3">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleBackgroundFile}
+                disabled={isUploadingBg}
+                className="text-sm text-zinc-300"
+              />
+              {isUploadingBg && <span className="ml-2 text-xs text-zinc-400">Uploading…</span>}
+              {settings.background.type === 'custom' && (
+                <p className="mt-2 text-xs text-zinc-500 break-all">Current: {settings.background.value}</p>
+              )}
+            </div>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={handleResetSettings}

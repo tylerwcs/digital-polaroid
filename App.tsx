@@ -1,6 +1,7 @@
 import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import UploadView from './components/UploadView';
+import SignView from './components/SignView';
 import DisplayView from './components/DisplayView';
 import DisplayViewGrid from './components/DisplayViewGrid';
 import AdminView from './components/AdminView';
@@ -14,6 +15,8 @@ const App: React.FC = () => {
         <Routes>
           {/* Default route is the mobile uploader */}
           <Route path="/" element={<UploadView />} />
+          {/* Signing station for the iPad */}
+          <Route path="/sign" element={<SignView />} />
           {/* Display route for the big screen */}
           <Route path="/wall" element={<DisplayView />} />
           {/* 6-Column Grid Display route (no spotlight) */}

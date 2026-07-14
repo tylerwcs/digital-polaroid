@@ -98,6 +98,12 @@ const AdminView: React.FC = () => {
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
         <div className="flex items-center gap-4">
           <div className="text-zinc-400 text-sm">{photos.length} submissions</div>
+          <a
+            href="#/sign"
+            className="bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            Signing Station
+          </a>
           <button
             type="button"
             onClick={handleDownloadAll}

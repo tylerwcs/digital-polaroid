@@ -96,8 +96,9 @@ preserved — it feeds the same review stage.
 1. On load: `GET /api/pending` for the current queue, then subscribe to socket
    events (`pending_added`, `pending_removed`, `pending_reordered`).
 2. **Auto-show oldest** waiting photo. A small **"N waiting"** badge shows the
-   remaining count. New arrivals while signing wait in line and do **not**
-   interrupt the in-progress signature.
+   count of photos still in line **excluding** the one currently displayed
+   (badge hidden when N = 0). New arrivals while signing wait in line and do
+   **not** interrupt the in-progress signature.
 3. Render the current photo in `SignableBubble`. Controls:
    - **Clear** — wipe signature strokes (existing `SignableBubble.clear()`).
    - **Discard** — `DELETE /api/pending/:id`; removes from queue, deletes the
@@ -149,7 +150,7 @@ convey the authoritative order; the iPad renders the head of the list.
 
 ## Configuration
 
-- `MAX_PENDING` (env, default e.g. 50): cap on the pending queue; `POST /api/pending`
+- `MAX_PENDING` (env, default `50`): cap on the pending queue; `POST /api/pending`
   returns `429` when full so a runaway phone cannot exhaust disk.
 - Reuses existing `MAX_IMAGE_MB` / `JSON_BODY_LIMIT_MB` validation for the capture
   payload.

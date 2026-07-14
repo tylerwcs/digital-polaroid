@@ -1,24 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { compressImage, savePhoto } from '../services/storageService';
-import { PhotoEntry } from '../types';
+import { compressImage, savePending } from '../services/storageService';
 import { useToast } from '../context/ToastContext';
 import { BubbleFrame } from './BubbleFrame';
 import { CameraBubble, CameraBubbleHandle } from './CameraBubble';
-import { SignableBubble, SignableBubbleHandle } from './SignableBubble';
 
 type Stage = 'camera' | 'review' | 'sending' | 'sent';
+
+const SENT_RESET_MS = 1800;
 
 const UploadView: React.FC = () => {
   const { showToast } = useToast();
   const cameraRef = useRef<CameraBubbleHandle>(null);
-  const signRef = useRef<SignableBubbleHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [stage, setStage] = useState<Stage>('camera');
   const [captured, setCaptured] = useState<string | null>(null);
   const [cameraFailed, setCameraFailed] = useState(false);
 
-  // Responsive bubble size: fits a portrait phone/tablet without overflowing,
+  // Responsive bubble size: fits a portrait phone without overflowing,
   // leaving room for the controls below.
   const [diameter, setDiameter] = useState(320);
   useEffect(() => {
@@ -31,6 +30,17 @@ const UploadView: React.FC = () => {
     window.addEventListener('resize', compute);
     return () => window.removeEventListener('resize', compute);
   }, []);
+
+  // After a successful send, drop back to the camera for the next guest.
+  useEffect(() => {
+    if (stage !== 'sent') return;
+    const timer = setTimeout(() => {
+      setCaptured(null);
+      setCameraFailed(false);
+      setStage('camera');
+    }, SENT_RESET_MS);
+    return () => clearTimeout(timer);
+  }, [stage]);
 
   const handleCameraError = (message: string) => {
     setCameraFailed(true);
@@ -72,29 +82,19 @@ const UploadView: React.FC = () => {
     if (!captured) return;
     setStage('sending');
 
-    const signature = signRef.current?.getSignature();
-    const newPhoto: PhotoEntry = {
+    const result = await savePending({
       id: Date.now().toString(),
-      images: [captured],
-      caption: '',
-      signature,
-      timestamp: Date.now(),
+      image: captured,
       rotation: Math.random() * 6 - 3,
-    };
+      timestamp: Date.now(),
+    });
 
-    const result = await savePhoto(newPhoto);
     if (result.success) {
       setStage('sent');
     } else {
       showToast(result.error || 'Could not send. Check the connection.', 'error');
       setStage('review');
     }
-  };
-
-  const handleTakeAnother = () => {
-    setCaptured(null);
-    setCameraFailed(false);
-    setStage('camera');
   };
 
   return (
@@ -128,14 +128,16 @@ const UploadView: React.FC = () => {
         )}
 
         {(stage === 'review' || stage === 'sending') && captured && (
-          <SignableBubble ref={signRef} diameter={diameter} imageDataUrl={captured} />
+          <BubbleFrame diameter={diameter}>
+            <img src={captured} alt="" className="w-full h-full object-cover" draggable={false} />
+          </BubbleFrame>
         )}
 
         {stage === 'sent' && (
           <BubbleFrame diameter={diameter}>
             <div className="w-full h-full flex flex-col items-center justify-center text-center gap-2 px-6 text-white">
-              <span className="text-2xl font-semibold">Sent to the wall!</span>
-              <span className="text-white/70 text-sm">Your bubble is floating now ✨</span>
+              <span className="text-2xl font-semibold">Sent to iPad!</span>
+              <span className="text-white/70 text-sm">Head over to sign it ✨</span>
             </div>
           </BubbleFrame>
         )}
@@ -168,31 +170,16 @@ const UploadView: React.FC = () => {
               Retake
             </button>
             <button
-              onClick={() => signRef.current?.clear()}
-              className="px-6 py-3 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              Clear
-            </button>
-            <button
               onClick={handleSend}
               className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform"
             >
-              Send to Wall
+              Send to iPad
             </button>
           </div>
         )}
 
         {stage === 'sending' && (
           <div className="px-8 py-3 text-white/80">Sending…</div>
-        )}
-
-        {stage === 'sent' && (
-          <button
-            onClick={handleTakeAnother}
-            className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform"
-          >
-            Take another
-          </button>
         )}
       </div>
 

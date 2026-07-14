@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-import { PhotoEntry } from '../types';
+import { PendingPhoto, PhotoEntry } from '../types';
 
 const parseNumberEnv = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
@@ -27,7 +27,7 @@ const isLoopbackHost = (hostname: string) =>
   hostname === '[::1]' ||
   hostname.endsWith('.localhost');
 
-const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
+const toAbsoluteImageUrl = <T extends { imageUrl?: string }>(photo: T): T => {
   if (!photo?.imageUrl || photo.imageUrl.startsWith('data:')) {
     return photo;
   }
@@ -55,11 +55,11 @@ const toAbsoluteImageUrl = (photo: PhotoEntry): PhotoEntry => {
         const apiOrigin = new URL(apiBase).origin;
         imageUrl = `${apiOrigin}${parsed.pathname}${parsed.search}`;
       }
-      return { ...photo, imageUrl: upgradeToHttpsIfNeeded(imageUrl) };
+      return { ...photo, imageUrl: upgradeToHttpsIfNeeded(imageUrl) } as T;
     }
 
     const absolute = new URL(imageUrl, apiBase).toString();
-    return { ...photo, imageUrl: upgradeToHttpsIfNeeded(absolute) };
+    return { ...photo, imageUrl: upgradeToHttpsIfNeeded(absolute) } as T;
   } catch {
     return photo;
   }
@@ -184,6 +184,129 @@ export const subscribeToDelete = (callback: (id: string) => void) => {
   socket.on('delete_photo', callback);
   return () => {
     socket.off('delete_photo', callback);
+  };
+};
+
+export interface SavePendingInput {
+  id: string;
+  image: string;      // base64 data URL
+  rotation: number;
+  timestamp: number;
+}
+
+export interface PendingResult {
+  success: boolean;
+  error?: string;
+}
+
+const readError = async (res: Response, fallback: string): Promise<string> => {
+  try {
+    const payload = await res.json();
+    if (payload?.error) return payload.error as string;
+  } catch {
+    // Non-JSON error body; use the fallback
+  }
+  return fallback;
+};
+
+// Phone: hand a freshly captured photo to the signing queue.
+export const savePending = async (entry: SavePendingInput): Promise<PendingResult> => {
+  try {
+    const res = await fetch(`${API_URL}/api/pending`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    });
+
+    if (!res.ok) {
+      return { success: false, error: await readError(res, 'Failed to send the photo. Please try again.') };
+    }
+    return { success: true };
+  } catch (e) {
+    console.error('Error sending photo to the signing queue', e);
+    return { success: false, error: e instanceof Error ? e.message : 'Unable to reach server' };
+  }
+};
+
+// iPad: current signing queue, oldest first.
+export const getPending = async (): Promise<PendingPhoto[]> => {
+  try {
+    const res = await fetch(`${API_URL}/api/pending`);
+    if (!res.ok) throw new Error('Failed to fetch the signing queue');
+    const data: PendingPhoto[] = await res.json();
+    return data.map(toAbsoluteImageUrl);
+  } catch (e) {
+    console.error('Failed to load the signing queue', e);
+    return [];
+  }
+};
+
+// iPad: sign off and send to the wall. `signature` is optional.
+export const commitPending = async (id: string, signature?: string): Promise<PendingResult> => {
+  try {
+    const res = await fetch(`${API_URL}/api/pending/${id}/commit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature }),
+    });
+
+    if (!res.ok) {
+      return { success: false, error: await readError(res, 'Failed to upload to the wall. Please try again.') };
+    }
+    return { success: true };
+  } catch (e) {
+    console.error('Error committing pending photo', e);
+    return { success: false, error: e instanceof Error ? e.message : 'Unable to reach server' };
+  }
+};
+
+// iPad: throw the photo away without sending it to the wall.
+export const discardPending = async (id: string): Promise<PendingResult> => {
+  try {
+    const res = await fetch(`${API_URL}/api/pending/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      return { success: false, error: await readError(res, 'Failed to discard the photo.') };
+    }
+    return { success: true };
+  } catch (e) {
+    console.error('Error discarding pending photo', e);
+    return { success: false, error: e instanceof Error ? e.message : 'Unable to reach server' };
+  }
+};
+
+// iPad: push the photo to the back of the queue.
+export const skipPending = async (id: string): Promise<PendingResult> => {
+  try {
+    const res = await fetch(`${API_URL}/api/pending/${id}/skip`, { method: 'POST' });
+    if (!res.ok) {
+      return { success: false, error: await readError(res, 'Failed to skip the photo.') };
+    }
+    return { success: true };
+  } catch (e) {
+    console.error('Error skipping pending photo', e);
+    return { success: false, error: e instanceof Error ? e.message : 'Unable to reach server' };
+  }
+};
+
+export interface PendingSubscribers {
+  onAdded: (photo: PendingPhoto) => void;
+  onRemoved: (id: string) => void;
+  onReordered: (queue: PendingPhoto[]) => void;
+}
+
+export const subscribeToPending = (handlers: PendingSubscribers) => {
+  const added = (photo: PendingPhoto) => handlers.onAdded(toAbsoluteImageUrl(photo));
+  const removed = (id: string) => handlers.onRemoved(id);
+  const reordered = (queue: PendingPhoto[]) => handlers.onReordered(queue.map(toAbsoluteImageUrl));
+
+  socket.on('pending_added', added);
+  socket.on('pending_removed', removed);
+  socket.on('pending_reordered', reordered);
+
+  return () => {
+    socket.off('pending_added', added);
+    socket.off('pending_removed', removed);
+    socket.off('pending_reordered', reordered);
   };
 };
 

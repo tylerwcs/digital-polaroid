@@ -10,6 +10,13 @@ export interface PhotoEntry {
   rotation: number; // Random rotation for visual interest
 }
 
+export interface PendingPhoto {
+  id: string;
+  imageUrl: string;   // Resolved URL served by backend
+  timestamp: number;
+  rotation: number;
+}
+
 export interface GeminiResponse {
   caption: string;
 }

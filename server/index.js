@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
 import { renderPolaroidPng, canExportPolaroid } from './polaroidExport.js';
+import { createPendingQueue, sanitizePending, DEFAULT_MAX_PENDING } from './pendingQueue.js';
 import os from 'os';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
@@ -21,6 +22,7 @@ const MAX_IMAGE_MB = parseFloat(process.env.MAX_IMAGE_MB || '3');
 const JSON_BODY_LIMIT_MB = parseFloat(process.env.JSON_BODY_LIMIT_MB || '5');
 const SAVE_DEBOUNCE_MS = parseInt(process.env.SAVE_DEBOUNCE_MS || '1000', 10);
 const ENABLE_DISK_CACHE = (process.env.ENABLE_DISK_CACHE || 'false').toLowerCase() === 'true';
+const MAX_PENDING = parseInt(process.env.MAX_PENDING || String(DEFAULT_MAX_PENDING), 10);
 
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 const MAX_CONCURRENT_EXPORTS = parseInt(process.env.MAX_CONCURRENT_EXPORTS || '2', 10);
@@ -92,6 +94,7 @@ app.get(`${UPLOAD_URL_BASE}/:fileName`, (req, res, next) => {
 
 // In-memory cache
 let photos = [];
+const pendingQueue = createPendingQueue({ maxPending: MAX_PENDING });
 let activeUploads = 0;
 let saveTimer = null;
 let savePending = false;
@@ -298,6 +301,19 @@ const validatePhotoPayload = (photo) => {
   return null;
 };
 
+const validatePendingPayload = (entry) => {
+  if (!entry || typeof entry.id !== 'string' || !entry.id) {
+    return 'Invalid photo payload';
+  }
+  if (typeof entry.image !== 'string' || !entry.image.startsWith('data:image')) {
+    return 'Unsupported image format';
+  }
+  if (approxBytesFromDataUri(entry.image) > MAX_IMAGE_BYTES) {
+    return `Image exceeds ${MAX_IMAGE_MB}MB limit`;
+  }
+  return null;
+};
+
 // Render the floating-bubble export video. Resolves with the output mp4 path.
 const renderExportVideo = (bubblePngPath, outPath) =>
   new Promise((resolve, reject) => {
@@ -472,6 +488,129 @@ app.get('/api/photos/download-all', async (req, res) => {
   }
 
   await archive.finalize();
+});
+
+// --- Pending queue: photos captured on a phone, awaiting signature on the iPad ---
+
+app.get('/api/pending', (req, res) => {
+  res.json(pendingQueue.list().map(sanitizePending));
+});
+
+app.post('/api/pending', async (req, res) => {
+  const entry = req.body;
+
+  const validationError = validatePendingPayload(entry);
+  if (validationError) {
+    return res.status(400).json({ error: validationError });
+  }
+
+  if (pendingQueue.isFull()) {
+    return res.status(429).json({ error: 'Signing queue is full. Please retry shortly.' });
+  }
+
+  const decoded = decodeBase64Image(entry.image);
+  if (!decoded) {
+    return res.status(400).json({ error: 'Malformed image data' });
+  }
+
+  const extension = decoded.mime === 'image/png' ? 'png' : 'jpg';
+  const storageFile = `${entry.id}.${extension}`;
+
+  try {
+    await fs.writeFile(fullImagePath(storageFile), decoded.buffer);
+
+    const record = {
+      id: entry.id,
+      timestamp: typeof entry.timestamp === 'number' ? entry.timestamp : Date.now(),
+      rotation: typeof entry.rotation === 'number' ? entry.rotation : (Math.random() * 6 - 3),
+      imageUrl: buildImageUrl(storageFile),
+      storageFile,
+    };
+
+    // Re-check the cap: an await elapsed since isFull() above.
+    if (!pendingQueue.add(record)) {
+      await deleteFileIfExists(storageFile);
+      return res.status(429).json({ error: 'Signing queue is full. Please retry shortly.' });
+    }
+
+    const publicRecord = sanitizePending(record);
+    io.emit('pending_added', publicRecord);
+    return res.status(201).json({ success: true, pending: publicRecord });
+  } catch (error) {
+    console.error('Pending upload error:', error);
+    await deleteFileIfExists(storageFile);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/pending/:id/commit', async (req, res) => {
+  try {
+    const { signature } = req.body || {};
+
+    if (signature !== undefined && typeof signature !== 'string') {
+      return res.status(400).json({ error: 'Invalid signature' });
+    }
+    if (typeof signature === 'string' && approxBytesFromDataUri(signature) > MAX_IMAGE_BYTES) {
+      return res.status(400).json({ error: `Signature exceeds ${MAX_IMAGE_MB}MB limit` });
+    }
+
+    const record = pendingQueue.remove(req.params.id);
+    if (!record) {
+      return res.status(404).json({ error: 'Photo is no longer in the queue' });
+    }
+
+    // Hand off into the existing live-photo path. The image file is reused as-is.
+    const storedPhoto = {
+      id: record.id,
+      caption: '',
+      timestamp: record.timestamp,
+      rotation: record.rotation,
+      author: undefined,
+      signature: signature || undefined,
+      imageUrl: record.imageUrl,
+      storageFile: record.storageFile,
+    };
+
+    photos.unshift(storedPhoto);
+    await trimPhotoHistory();
+    scheduleSave();
+
+    const publicPhoto = sanitizePhoto(storedPhoto);
+    io.emit('new_photo', publicPhoto);
+    io.emit('pending_removed', record.id);
+
+    return res.status(201).json({ success: true, photo: publicPhoto });
+  } catch (error) {
+    console.error('Pending commit error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/api/pending/:id', async (req, res) => {
+  try {
+    const record = pendingQueue.remove(req.params.id);
+    if (!record) {
+      return res.status(404).json({ error: 'Photo is no longer in the queue' });
+    }
+
+    await deleteFileIfExists(record.storageFile);
+    io.emit('pending_removed', record.id);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Pending discard error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/pending/:id/skip', (req, res) => {
+  const record = pendingQueue.skip(req.params.id);
+  if (!record) {
+    return res.status(404).json({ error: 'Photo is no longer in the queue' });
+  }
+
+  io.emit('pending_reordered', pendingQueue.list().map(sanitizePending));
+  return res.json({ success: true });
 });
 
 app.post('/api/export-video', async (req, res) => {

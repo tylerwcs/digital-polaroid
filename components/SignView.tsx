@@ -64,6 +64,15 @@ const SignView: React.FC = () => {
 
   const removeFromQueue = (id: string) => setQueue((prev) => prev.filter((p) => p.id !== id));
 
+  // The server says this photo is no longer in the queue (404). It may never send
+  // a socket event for it — if the removal was broadcast before we loaded, there's
+  // nothing left to broadcast. Drop it locally so a phantom head can't wedge the
+  // station forever. Only for `gone`; a network failure stays retryable.
+  const handleGone = (id: string) => {
+    removeFromQueue(id);
+    showToast('That photo was already handled.', 'info');
+  };
+
   const handleUpload = async () => {
     if (!current || busy) return;
     setBusy(true);
@@ -74,6 +83,8 @@ const SignView: React.FC = () => {
     if (result.success) {
       removeFromQueue(current.id);
       showToast('Sent to the wall ✨', 'success');
+    } else if (result.gone) {
+      handleGone(current.id);
     } else {
       showToast(result.error || 'Could not upload. Check the connection.', 'error');
     }
@@ -88,6 +99,8 @@ const SignView: React.FC = () => {
     if (result.success) {
       removeFromQueue(current.id);
       showToast('Photo discarded.', 'info');
+    } else if (result.gone) {
+      handleGone(current.id);
     } else {
       showToast(result.error || 'Could not discard. Check the connection.', 'error');
     }
@@ -99,7 +112,9 @@ const SignView: React.FC = () => {
     setBusy(true);
 
     const result = await skipPending(current.id);
-    if (!result.success) {
+    if (result.gone) {
+      handleGone(current.id);
+    } else if (!result.success) {
       showToast(result.error || 'Could not skip. Check the connection.', 'error');
     }
     // On success the server broadcasts pending_reordered, which updates the queue.

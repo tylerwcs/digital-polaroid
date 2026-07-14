@@ -197,6 +197,10 @@ export interface SavePendingInput {
 export interface PendingResult {
   success: boolean;
   error?: string;
+  // The server reported 404: this photo is no longer in the queue (already
+  // committed, discarded, or otherwise gone). Distinct from a retryable
+  // failure — the caller can safely drop it instead of leaving it stuck.
+  gone?: boolean;
 }
 
 const readError = async (res: Response, fallback: string): Promise<string> => {
@@ -251,7 +255,8 @@ export const commitPending = async (id: string, signature?: string): Promise<Pen
     });
 
     if (!res.ok) {
-      return { success: false, error: await readError(res, 'Failed to upload to the wall. Please try again.') };
+      const error = await readError(res, 'Failed to upload to the wall. Please try again.');
+      return { success: false, gone: res.status === 404, error };
     }
     return { success: true };
   } catch (e) {
@@ -265,7 +270,8 @@ export const discardPending = async (id: string): Promise<PendingResult> => {
   try {
     const res = await fetch(`${API_URL}/api/pending/${id}`, { method: 'DELETE' });
     if (!res.ok) {
-      return { success: false, error: await readError(res, 'Failed to discard the photo.') };
+      const error = await readError(res, 'Failed to discard the photo.');
+      return { success: false, gone: res.status === 404, error };
     }
     return { success: true };
   } catch (e) {
@@ -279,7 +285,8 @@ export const skipPending = async (id: string): Promise<PendingResult> => {
   try {
     const res = await fetch(`${API_URL}/api/pending/${id}/skip`, { method: 'POST' });
     if (!res.ok) {
-      return { success: false, error: await readError(res, 'Failed to skip the photo.') };
+      const error = await readError(res, 'Failed to skip the photo.');
+      return { success: false, gone: res.status === 404, error };
     }
     return { success: true };
   } catch (e) {

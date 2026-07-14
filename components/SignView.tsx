@@ -34,8 +34,16 @@ const SignView: React.FC = () => {
   useEffect(() => {
     let active = true;
 
-    getPending().then((items) => {
-      if (active) setQueue(items);
+    getPending().then((fetched) => {
+      if (!active) return;
+      // Merge rather than overwrite: a pending_added event can land while this
+      // fetch is still in flight, and the response reflects server state from
+      // before that photo existed. Keep the fetched (oldest-first) order, then
+      // append anything the socket added that the fetch didn't know about.
+      setQueue((prev) => {
+        const fetchedIds = new Set(fetched.map((p) => p.id));
+        return [...fetched, ...prev.filter((p) => !fetchedIds.has(p.id))];
+      });
     });
 
     const unsubscribe = subscribeToPending({
@@ -54,7 +62,7 @@ const SignView: React.FC = () => {
   const current = queue[0];
   const waiting = Math.max(queue.length - 1, 0);
 
-  const dropCurrent = (id: string) => setQueue((prev) => prev.filter((p) => p.id !== id));
+  const removeFromQueue = (id: string) => setQueue((prev) => prev.filter((p) => p.id !== id));
 
   const handleUpload = async () => {
     if (!current || busy) return;
@@ -64,7 +72,7 @@ const SignView: React.FC = () => {
     const result = await commitPending(current.id, signature);
 
     if (result.success) {
-      dropCurrent(current.id);
+      removeFromQueue(current.id);
       showToast('Sent to the wall ✨', 'success');
     } else {
       showToast(result.error || 'Could not upload. Check the connection.', 'error');
@@ -78,7 +86,7 @@ const SignView: React.FC = () => {
 
     const result = await discardPending(current.id);
     if (result.success) {
-      dropCurrent(current.id);
+      removeFromQueue(current.id);
       showToast('Photo discarded.', 'info');
     } else {
       showToast(result.error || 'Could not discard. Check the connection.', 'error');

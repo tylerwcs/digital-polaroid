@@ -22,10 +22,19 @@ export const SignableBubble = forwardRef<SignableBubbleHandle, SignableBubblePro
     const band = signatureBandBox(circle);
 
     // Clear strokes if the underlying photo changes (e.g., retake then re-enter).
+    //
+    // Also clear when `diameter` changes. Resizing the bubble writes new
+    // width/height onto the same mounted <canvas>, and per the HTML spec that
+    // always wipes its pixel buffer — but signature_pad's internal "is empty"
+    // flag is only reset by an explicit clear(). Without this, a resize (iPad
+    // rotation, Split View) would leave a visually blank canvas that still
+    // reports isEmpty() === false, and getSignature() would hand back a blank
+    // PNG that gets stored as the guest's signature. Losing an in-progress
+    // signature on rotate is acceptable; silently uploading an empty one is not.
     useEffect(() => {
       sigRef.current?.clear();
       setHasDrawn(false);
-    }, [imageDataUrl]);
+    }, [imageDataUrl, diameter]);
 
     useImperativeHandle(ref, () => ({
       getSignature: () => {

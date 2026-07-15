@@ -45,16 +45,19 @@ export const useSlingshot = (opts: SlingshotOptions): SlingshotState => {
   const [offsetY, setOffsetY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const startYRef = useRef(0);
-  const rawRef = useRef(0);       // largest raw downward pull this drag
+  const rawRef = useRef(0);       // raw downward pull at the most recent move (lets sliding back up cancel)
   const activeRef = useRef(false);
+  const pointerIdRef = useRef<number | null>(null);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (disabled) return;
+      if (activeRef.current) return; // ignore a second press while a drag is active
       const rect = e.currentTarget.getBoundingClientRect();
       const frac = (e.clientY - rect.top) / rect.height;
       if (frac > graceTopFraction) return; // started on the signature band → drawing
       activeRef.current = true;
+      pointerIdRef.current = e.pointerId;
       startYRef.current = e.clientY;
       rawRef.current = 0;
       setIsDragging(true);
@@ -70,6 +73,7 @@ export const useSlingshot = (opts: SlingshotOptions): SlingshotState => {
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!activeRef.current) return;
+      if (e.pointerId !== pointerIdRef.current) return;
       const raw = Math.max(0, e.clientY - startYRef.current); // downward only
       rawRef.current = raw;
       setOffsetY(raw * rubberBand);
@@ -81,17 +85,31 @@ export const useSlingshot = (opts: SlingshotOptions): SlingshotState => {
     (launch: boolean) => {
       if (!activeRef.current) return;
       activeRef.current = false;
+      pointerIdRef.current = null;
       const pulled = rawRef.current;
       setIsDragging(false);
       setOffsetY(0);
+      if (disabled) { onCancel?.(); return; }
       if (launch && pulled >= thresholdPx) onLaunch();
       else onCancel?.();
     },
-    [thresholdPx, onLaunch, onCancel]
+    [disabled, thresholdPx, onLaunch, onCancel]
   );
 
-  const onPointerUp = useCallback(() => end(true), [end]);
-  const onPointerCancel = useCallback(() => end(false), [end]);
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.pointerId !== pointerIdRef.current) return;
+      end(true);
+    },
+    [end]
+  );
+  const onPointerCancel = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.pointerId !== pointerIdRef.current) return;
+      end(false);
+    },
+    [end]
+  );
 
   return {
     offsetY,

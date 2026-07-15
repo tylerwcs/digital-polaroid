@@ -36,3 +36,5 @@ server/uploads/*
 *.njsproj
 *.sln
 *.sw?
+
+.superpowers/

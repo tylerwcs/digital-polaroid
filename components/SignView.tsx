@@ -14,8 +14,10 @@ import {
 
 // How long the bubble takes to flick up and off the screen on launch.
 const FLICK_MS = 450;
-// The bubble never charges past this fraction of the viewport height.
+// The bubble never charges past this fraction of the viewport height (the swipe line).
 const MAX_PULL_FRACTION = 0.7;
+// The bubble's fixed CSS top (`top: 3.5rem`); tablet safe-area insets are smaller.
+const BUBBLE_TOP_PX = 56;
 
 const SignView: React.FC = () => {
   const { showToast } = useToast();
@@ -31,15 +33,21 @@ const SignView: React.FC = () => {
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Sized for a tablet in either orientation. Kept to ~half the viewport height
-  // and top-anchored (below) so there's room to pull the bubble down without it
-  // crossing the 70% line.
+  // Bubble sizing + the pull cap, computed together from the viewport. The bubble
+  // is top-anchored at a fixed CSS top (below), so its resting bottom edge is a
+  // known BUBBLE_TOP_PX + diameter — no DOM measurement needed. maxTravel is the
+  // room left before the bubble's bottom reaches the 70% line (the swipe zone).
   const [diameter, setDiameter] = useState(380);
+  const [maxTravel, setMaxTravel] = useState(120);
   useEffect(() => {
     const compute = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      setDiameter(Math.round(Math.max(240, Math.min(w * 0.68, h * 0.5))));
+      const d = Math.round(Math.max(240, Math.min(w * 0.68, h * 0.5)) * 1.2);
+      setDiameter(d);
+      // Reserve for the charge grow (scale 1.08 pushes the bottom down by ~d*0.04)
+      // so the fully-charged bubble still stops at the 70% line.
+      setMaxTravel(Math.max(12, h * MAX_PULL_FRACTION - (BUBBLE_TOP_PX + d) - d * 0.04));
     };
     compute();
     window.addEventListener('resize', compute);
@@ -181,25 +189,6 @@ const SignView: React.FC = () => {
     onLaunch: handleLaunch,
   });
 
-  // Cap the bubble's downward travel so it never crosses MAX_PULL_FRACTION of the
-  // viewport. Measured at rest (this effect never runs mid-drag), so the wrapper's
-  // rect.bottom is the resting bottom edge.
-  const followRef = useRef<HTMLDivElement>(null);
-  const [maxTravel, setMaxTravel] = useState(160);
-  useEffect(() => {
-    const measure = () => {
-      const el = followRef.current;
-      if (!el || typeof window === 'undefined') return;
-      const rect = el.getBoundingClientRect();
-      // Reserve for the charge grow (scale up to 1.08 pushes the bottom edge down
-      // by ~diameter * 0.04) so the fully-charged bubble still stays within 70%.
-      setMaxTravel(Math.max(60, window.innerHeight * MAX_PULL_FRACTION - rect.bottom - diameter * 0.04));
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [diameter, current?.id]);
-
   const pull = sling.offsetY; // raw downward pull in px (rubberBand: 1)
   const charge = Math.min(1, pull / (diameter * 0.22)); // 0..1 toward launch
   // Diminishing-returns resistance: heavy drag that asymptotes to maxTravel, so
@@ -208,10 +197,13 @@ const SignView: React.FC = () => {
   const followScale = reducedMotion ? 1 : 1 + charge * 0.08; // subtle uniform grow (faces never distort)
   const shakeAmp = charge * 2.4; // px
 
-  const followTransform =
+  const followInner =
     launching && !reducedMotion
       ? 'translateY(-120vh) scale(1.12)'
       : `translateY(${followY}px) scale(${followScale})`;
+  // The bubble is absolutely positioned and centered via translateX(-50%), so it
+  // holds a fixed spot whether or not the "N waiting" badge is showing.
+  const followTransform = `translateX(-50%) ${followInner}`;
   const followTransition = launching
     ? `transform ${FLICK_MS}ms ease-out, opacity ${FLICK_MS}ms ease-out`
     : sling.isDragging
@@ -253,17 +245,19 @@ const SignView: React.FC = () => {
       />
 
       {current ? (
-        <div className="relative z-10 flex flex-col items-center w-full pt-[max(1.5rem,env(safe-area-inset-top))] gap-6">
+        <>
           {waiting > 0 && (
-            <div className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-sm text-white/80">
+            <div className="absolute left-1/2 -translate-x-1/2 top-[max(1rem,env(safe-area-inset-top))] z-10 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-sm text-white/80">
               {waiting} waiting
             </div>
           )}
 
-          {/* Bubble — follows the finger, charges (grows + shakes), flicks up on launch. */}
+          {/* Bubble — fixed upper position (stable whether or not the badge shows),
+              follows the finger on pull, charges (grows + shakes), flicks up on launch. */}
           <div
-            ref={followRef}
+            className="absolute left-1/2 z-10"
             style={{
+              top: 'max(3.5rem, env(safe-area-inset-top))',
               transform: followTransform,
               opacity: launching && !reducedMotion ? 0 : 1,
               transition: followTransition,
@@ -280,11 +274,12 @@ const SignView: React.FC = () => {
             </div>
           </div>
 
-          {/* Swipe / pull trigger zone (fades away as you pull). */}
+          {/* Swipe / pull trigger zone, anchored at 70% of the viewport (fades as you pull). */}
           <div
             {...sling.handlers}
-            className="flex flex-col items-center gap-2 select-none"
+            className="absolute left-0 right-0 z-10 flex flex-col items-center gap-2 select-none"
             style={{
+              top: '70%',
               touchAction: 'none',
               cursor: 'grab',
               opacity: swipeOpacity,
@@ -316,9 +311,9 @@ const SignView: React.FC = () => {
               ))}
             </div>
           </div>
-        </div>
+        </>
       ) : (
-        <div className="relative z-10 flex-1 flex items-center justify-center">
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
           <BubbleFrame diameter={diameter}>
             <div className="w-full h-full flex flex-col items-center justify-center text-center gap-2 px-6 text-white">
               <span className="text-2xl font-semibold">All caught up</span>

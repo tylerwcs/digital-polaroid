@@ -18,6 +18,8 @@ const FLICK_MS = 450;
 const SignView: React.FC = () => {
   const { showToast } = useToast();
   const signRef = useRef<SignableBubbleHandle>(null);
+  const launchingIdRef = useRef<string | null>(null);
+  const launchTimerRef = useRef<number | null>(null);
 
   const [queue, setQueue] = useState<PendingPhoto[]>([]);
   const [busy, setBusy] = useState(false);
@@ -58,7 +60,10 @@ const SignView: React.FC = () => {
     const unsubscribe = subscribeToPending({
       onAdded: (photo) =>
         setQueue((prev) => (prev.some((p) => p.id === photo.id) ? prev : [...prev, photo])),
-      onRemoved: (id) => setQueue((prev) => prev.filter((p) => p.id !== id)),
+      onRemoved: (id) =>
+        setQueue((prev) =>
+          id === launchingIdRef.current ? prev : prev.filter((p) => p.id !== id)
+        ),
       onReordered: (items) => setQueue(items),
     });
 
@@ -67,6 +72,13 @@ const SignView: React.FC = () => {
       unsubscribe();
     };
   }, []);
+
+  useEffect(
+    () => () => {
+      if (launchTimerRef.current) clearTimeout(launchTimerRef.current);
+    },
+    []
+  );
 
   const current = queue[0];
   const waiting = Math.max(queue.length - 1, 0);
@@ -92,24 +104,32 @@ const SignView: React.FC = () => {
     const signature = signRef.current?.getSignature(); // undefined is allowed
     setBusy(true);
     setLaunching(true);
+    // Keep this photo on-screen through the flick: ignore the socket's
+    // pending_removed for it (fired on commit) so the fly-up can play; the
+    // local timer below is the authoritative removal.
+    launchingIdRef.current = id;
 
     const result = await commitPending(id, signature);
     const settleMs = reducedMotion ? 0 : FLICK_MS;
 
+    const finish = (extra: () => void) => {
+      launchTimerRef.current = window.setTimeout(() => {
+        extra();
+        launchingIdRef.current = null;
+        setLaunching(false);
+        setBusy(false);
+      }, settleMs);
+    };
+
     if (result.success) {
-      window.setTimeout(() => {
+      finish(() => {
         removeFromQueue(id);
         showToast('Sent to the wall ✨', 'success');
-        setLaunching(false);
-        setBusy(false);
-      }, settleMs);
+      });
     } else if (result.gone) {
-      window.setTimeout(() => {
-        handleGone(id);
-        setLaunching(false);
-        setBusy(false);
-      }, settleMs);
+      finish(() => handleGone(id));
     } else {
+      launchingIdRef.current = null;
       setLaunching(false);
       setBusy(false);
       showToast(result.error || 'Could not upload. Check the connection.', 'error');

@@ -3,6 +3,7 @@ import { PendingPhoto } from '../types';
 import { useToast } from '../context/ToastContext';
 import { BubbleFrame } from './BubbleFrame';
 import { SignableBubble, SignableBubbleHandle } from './SignableBubble';
+import { useSlingshot } from '../hooks/useSlingshot';
 import {
   commitPending,
   discardPending,
@@ -11,12 +12,20 @@ import {
   subscribeToPending,
 } from '../services/storageService';
 
+// How long the bubble takes to flick up and off the screen on launch.
+const FLICK_MS = 450;
+
 const SignView: React.FC = () => {
   const { showToast } = useToast();
   const signRef = useRef<SignableBubbleHandle>(null);
 
   const [queue, setQueue] = useState<PendingPhoto[]>([]);
   const [busy, setBusy] = useState(false);
+  const [launching, setLaunching] = useState(false);
+
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Sized for a tablet in either orientation.
   const [diameter, setDiameter] = useState(420);
@@ -73,22 +82,38 @@ const SignView: React.FC = () => {
     showToast('That photo was already handled.', 'info');
   };
 
-  const handleUpload = async () => {
+  // Launch = the slingshot release past threshold. Fire the flick animation and
+  // the commit concurrently; advance the queue only after the flick finishes so
+  // the current bubble isn't swapped out mid-flight. A network failure snaps the
+  // bubble back and stays retryable; `gone` advances past a phantom.
+  const handleLaunch = async () => {
     if (!current || busy) return;
-    setBusy(true);
-
+    const id = current.id;
     const signature = signRef.current?.getSignature(); // undefined is allowed
-    const result = await commitPending(current.id, signature);
+    setBusy(true);
+    setLaunching(true);
+
+    const result = await commitPending(id, signature);
+    const settleMs = reducedMotion ? 0 : FLICK_MS;
 
     if (result.success) {
-      removeFromQueue(current.id);
-      showToast('Sent to the wall ✨', 'success');
+      window.setTimeout(() => {
+        removeFromQueue(id);
+        showToast('Sent to the wall ✨', 'success');
+        setLaunching(false);
+        setBusy(false);
+      }, settleMs);
     } else if (result.gone) {
-      handleGone(current.id);
+      window.setTimeout(() => {
+        handleGone(id);
+        setLaunching(false);
+        setBusy(false);
+      }, settleMs);
     } else {
+      setLaunching(false);
+      setBusy(false);
       showToast(result.error || 'Could not upload. Check the connection.', 'error');
     }
-    setBusy(false);
   };
 
   const handleDiscard = async () => {
@@ -121,6 +146,23 @@ const SignView: React.FC = () => {
     setBusy(false);
   };
 
+  const sling = useSlingshot({
+    thresholdPx: diameter * 0.22,
+    graceTopFraction: 0.58, // top ~58% of the bubble is the photo; below is the signing band
+    disabled: busy || launching,
+    onLaunch: handleLaunch,
+  });
+
+  const bubbleTransform =
+    launching && !reducedMotion
+      ? 'translateY(-120vh)'
+      : `translateY(${sling.offsetY}px)`;
+  const bubbleTransition = launching
+    ? `transform ${FLICK_MS}ms ease-out, opacity ${FLICK_MS}ms ease-out`
+    : sling.isDragging
+    ? 'none'
+    : 'transform 300ms cubic-bezier(0.34, 1.4, 0.5, 1)'; // snap-back spring
+
   return (
     <div className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center justify-center gap-8 px-4 py-[max(1rem,env(safe-area-inset-top))] overflow-hidden relative">
       {/* Themed background video (same asset as the wall) */}
@@ -143,12 +185,63 @@ const SignView: React.FC = () => {
 
         {current ? (
           <>
-            <SignableBubble
-              key={current.id}
-              ref={signRef}
-              diameter={diameter}
-              imageDataUrl={current.imageUrl}
-            />
+            {/* Sling-draggable bubble with a stretchy tether behind it. */}
+            <div className="relative" style={{ width: diameter, height: diameter }}>
+              {sling.isDragging && sling.offsetY > 4 && !reducedMotion && (
+                <svg
+                  className="absolute inset-0 pointer-events-none overflow-visible"
+                  width={diameter}
+                  height={diameter}
+                  aria-hidden
+                >
+                  <line
+                    x1={diameter * 0.2}
+                    y1={0}
+                    x2={diameter * 0.5}
+                    y2={sling.offsetY}
+                    stroke="rgba(255,255,255,0.45)"
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={diameter * 0.8}
+                    y1={0}
+                    x2={diameter * 0.5}
+                    y2={sling.offsetY}
+                    stroke="rgba(255,255,255,0.45)"
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
+              <div
+                {...sling.handlers}
+                style={{
+                  touchAction: 'none',
+                  transform: bubbleTransform,
+                  opacity: launching && !reducedMotion ? 0 : 1,
+                  transition: bubbleTransition,
+                  cursor: 'grab',
+                }}
+              >
+                <SignableBubble
+                  key={current.id}
+                  ref={signRef}
+                  diameter={diameter}
+                  imageDataUrl={current.imageUrl}
+                />
+              </div>
+            </div>
+
+            {/* Discoverability hint for the gesture (hidden while dragging/launching). */}
+            {!sling.isDragging && !launching && (
+              <div className="flex flex-col items-center gap-1 text-white/80">
+                <span className="text-2xl animate-bounce" aria-hidden>
+                  ⤓
+                </span>
+                <span className="text-sm">Pull down to send ✨</span>
+              </div>
+            )}
 
             <div className="flex items-center gap-3 flex-wrap justify-center">
               <button
@@ -171,13 +264,6 @@ const SignView: React.FC = () => {
                 className="px-6 py-3 rounded-full text-rose-300/90 hover:text-rose-200 hover:bg-rose-500/10 transition-colors disabled:opacity-40"
               >
                 Discard
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={busy}
-                className="px-8 py-3 rounded-full bg-white text-black font-semibold active:scale-95 transition-transform disabled:opacity-60"
-              >
-                {busy ? 'Working…' : 'Upload to Wall'}
               </button>
             </div>
           </>

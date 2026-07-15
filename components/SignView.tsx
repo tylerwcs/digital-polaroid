@@ -14,6 +14,8 @@ import {
 
 // How long the bubble takes to flick up and off the screen on launch.
 const FLICK_MS = 450;
+// The bubble never charges past this fraction of the viewport height.
+const MAX_PULL_FRACTION = 0.7;
 
 const SignView: React.FC = () => {
   const { showToast } = useToast();
@@ -29,13 +31,15 @@ const SignView: React.FC = () => {
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Sized for a tablet in either orientation.
-  const [diameter, setDiameter] = useState(420);
+  // Sized for a tablet in either orientation. Kept to ~half the viewport height
+  // and top-anchored (below) so there's room to pull the bubble down without it
+  // crossing the 70% line.
+  const [diameter, setDiameter] = useState(380);
   useEffect(() => {
     const compute = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      setDiameter(Math.round(Math.max(280, Math.min(w * 0.7, h * 0.6))));
+      setDiameter(Math.round(Math.max(240, Math.min(w * 0.68, h * 0.5))));
     };
     compute();
     window.addEventListener('resize', compute);
@@ -166,25 +170,77 @@ const SignView: React.FC = () => {
     setBusy(false);
   };
 
+  // The swipe zone (not the bubble) is the drag trigger, so the whole zone is
+  // grabbable (graceTopFraction: 1) and we read the raw finger pull unmodified
+  // (rubberBand: 1) to drive the charge curve ourselves.
   const sling = useSlingshot({
     thresholdPx: diameter * 0.22,
-    graceTopFraction: 0.58, // top ~58% of the bubble is the photo; below is the signing band
+    rubberBand: 1,
+    graceTopFraction: 1,
     disabled: busy || launching,
     onLaunch: handleLaunch,
   });
 
-  const bubbleTransform =
+  // Cap the bubble's downward travel so it never crosses MAX_PULL_FRACTION of the
+  // viewport. Measured at rest (this effect never runs mid-drag), so the wrapper's
+  // rect.bottom is the resting bottom edge.
+  const followRef = useRef<HTMLDivElement>(null);
+  const [maxTravel, setMaxTravel] = useState(160);
+  useEffect(() => {
+    const measure = () => {
+      const el = followRef.current;
+      if (!el || typeof window === 'undefined') return;
+      const rect = el.getBoundingClientRect();
+      // Reserve for the charge grow (scale up to 1.08 pushes the bottom edge down
+      // by ~diameter * 0.04) so the fully-charged bubble still stays within 70%.
+      setMaxTravel(Math.max(60, window.innerHeight * MAX_PULL_FRACTION - rect.bottom - diameter * 0.04));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [diameter, current?.id]);
+
+  const pull = sling.offsetY; // raw downward pull in px (rubberBand: 1)
+  const charge = Math.min(1, pull / (diameter * 0.22)); // 0..1 toward launch
+  // Diminishing-returns resistance: heavy drag that asymptotes to maxTravel, so
+  // the bubble lags the finger and never crosses the 70% line.
+  const followY = reducedMotion ? 0 : maxTravel * (1 - Math.exp(-pull / (maxTravel * 1.25)));
+  const followScale = reducedMotion ? 1 : 1 + charge * 0.08; // subtle uniform grow (faces never distort)
+  const shakeAmp = charge * 2.4; // px
+
+  const followTransform =
     launching && !reducedMotion
-      ? 'translateY(-120vh)'
-      : `translateY(${sling.offsetY}px)`;
-  const bubbleTransition = launching
+      ? 'translateY(-120vh) scale(1.12)'
+      : `translateY(${followY}px) scale(${followScale})`;
+  const followTransition = launching
     ? `transform ${FLICK_MS}ms ease-out, opacity ${FLICK_MS}ms ease-out`
     : sling.isDragging
     ? 'none'
-    : 'transform 300ms cubic-bezier(0.34, 1.4, 0.5, 1)'; // snap-back spring
+    : 'transform 340ms cubic-bezier(0.34, 1.5, 0.5, 1)'; // spring back to rest
+
+  const shakeStyle: React.CSSProperties | undefined =
+    sling.isDragging && !reducedMotion && pull > 2
+      ? ({ animation: 'sw-shake 90ms linear infinite', '--amp': shakeAmp.toFixed(2) } as React.CSSProperties)
+      : undefined;
+
+  const swipeOpacity = launching ? 0 : Math.max(0, 1 - pull / 45); // fades away the moment you pull
+
+  const iconBtn =
+    'w-14 h-14 rounded-full border flex items-center justify-center transition-colors ' +
+    'active:scale-95 disabled:opacity-30 disabled:pointer-events-none';
 
   return (
-    <div className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center justify-center gap-8 px-4 py-[max(1rem,env(safe-area-inset-top))] overflow-hidden relative">
+    <div className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center px-4 overflow-hidden relative">
+      <style>{`
+        @keyframes sw-wave { 0%,100%{opacity:.25;transform:translateY(-3px);} 50%{opacity:1;transform:translateY(3px);} }
+        @keyframes sw-shake {
+          0%,100%{transform:translate(0,0);}
+          25%{transform:translate(calc(var(--amp)*1px),calc(var(--amp)*-1px));}
+          50%{transform:translate(calc(var(--amp)*-1px),calc(var(--amp)*1px));}
+          75%{transform:translate(calc(var(--amp)*-1px),calc(var(--amp)*-1px));}
+        }
+      `}</style>
+
       {/* Themed background video (same asset as the wall) */}
       <video
         className="absolute inset-0 w-full h-full object-cover opacity-60 pointer-events-none"
@@ -196,106 +252,128 @@ const SignView: React.FC = () => {
         aria-hidden
       />
 
-      <div className="relative z-10 flex flex-col items-center gap-8 w-full">
-        {waiting > 0 && (
-          <div className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-sm text-white/80">
-            {waiting} waiting
-          </div>
-        )}
+      {current ? (
+        <div className="relative z-10 flex flex-col items-center w-full pt-[max(1.5rem,env(safe-area-inset-top))] gap-6">
+          {waiting > 0 && (
+            <div className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-sm text-white/80">
+              {waiting} waiting
+            </div>
+          )}
 
-        {current ? (
-          <>
-            {/* Sling-draggable bubble with a stretchy tether behind it. */}
-            <div className="relative" style={{ width: diameter, height: diameter }}>
-              {sling.isDragging && sling.offsetY > 4 && !reducedMotion && (
+          {/* Bubble — follows the finger, charges (grows + shakes), flicks up on launch. */}
+          <div
+            ref={followRef}
+            style={{
+              transform: followTransform,
+              opacity: launching && !reducedMotion ? 0 : 1,
+              transition: followTransition,
+              willChange: 'transform',
+            }}
+          >
+            <div style={shakeStyle}>
+              <SignableBubble
+                key={current.id}
+                ref={signRef}
+                diameter={diameter}
+                imageDataUrl={current.imageUrl}
+              />
+            </div>
+          </div>
+
+          {/* Swipe / pull trigger zone (fades away as you pull). */}
+          <div
+            {...sling.handlers}
+            className="flex flex-col items-center gap-2 select-none"
+            style={{
+              touchAction: 'none',
+              cursor: 'grab',
+              opacity: swipeOpacity,
+              transition: sling.isDragging ? 'none' : 'opacity 0.2s ease',
+            }}
+          >
+            <span className="font-extrabold tracking-[0.22em] text-sm text-white/90">SWIPE</span>
+            <div className="flex flex-col items-center gap-1" aria-hidden>
+              {[0, 1, 2].map((i) => (
                 <svg
-                  className="absolute inset-0 pointer-events-none overflow-visible"
-                  width={diameter}
-                  height={diameter}
-                  aria-hidden
+                  key={i}
+                  width="34"
+                  height="20"
+                  viewBox="0 0 34 20"
+                  style={{
+                    opacity: 0.5,
+                    animation: sling.isDragging ? undefined : `sw-wave 1.4s ease-in-out ${i * 0.18}s infinite`,
+                  }}
                 >
-                  <line
-                    x1={diameter * 0.2}
-                    y1={0}
-                    x2={diameter * 0.5}
-                    y2={sling.offsetY}
-                    stroke="rgba(255,255,255,0.45)"
-                    strokeWidth={3}
+                  <path
+                    d="M3 3 L17 15 L31 3"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth={5}
                     strokeLinecap="round"
-                  />
-                  <line
-                    x1={diameter * 0.8}
-                    y1={0}
-                    x2={diameter * 0.5}
-                    y2={sling.offsetY}
-                    stroke="rgba(255,255,255,0.45)"
-                    strokeWidth={3}
-                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
                 </svg>
-              )}
-              <div
-                {...sling.handlers}
-                style={{
-                  touchAction: 'none',
-                  transform: bubbleTransform,
-                  opacity: launching && !reducedMotion ? 0 : 1,
-                  transition: bubbleTransition,
-                  cursor: 'grab',
-                }}
-              >
-                <SignableBubble
-                  key={current.id}
-                  ref={signRef}
-                  diameter={diameter}
-                  imageDataUrl={current.imageUrl}
-                />
-              </div>
+              ))}
             </div>
-
-            {/* Discoverability hint for the gesture (hidden while dragging/launching). */}
-            {!sling.isDragging && !launching && (
-              <div className="flex flex-col items-center gap-1 text-white/80">
-                <span className="text-2xl animate-bounce" aria-hidden>
-                  ⤓
-                </span>
-                <span className="text-sm">Pull down to send ✨</span>
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 flex-wrap justify-center">
-              <button
-                onClick={() => signRef.current?.clear()}
-                disabled={busy}
-                className="px-6 py-3 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40"
-              >
-                Clear
-              </button>
-              <button
-                onClick={handleSkip}
-                disabled={busy || waiting === 0}
-                className="px-6 py-3 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40"
-              >
-                Skip
-              </button>
-              <button
-                onClick={handleDiscard}
-                disabled={busy}
-                className="px-6 py-3 rounded-full text-rose-300/90 hover:text-rose-200 hover:bg-rose-500/10 transition-colors disabled:opacity-40"
-              >
-                Discard
-              </button>
-            </div>
-          </>
-        ) : (
+          </div>
+        </div>
+      ) : (
+        <div className="relative z-10 flex-1 flex items-center justify-center">
           <BubbleFrame diameter={diameter}>
             <div className="w-full h-full flex flex-col items-center justify-center text-center gap-2 px-6 text-white">
               <span className="text-2xl font-semibold">All caught up</span>
               <span className="text-white/70 text-sm">Waiting for the next photo…</span>
             </div>
           </BubbleFrame>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Bottom-left icon controls */}
+      {current && (
+        <div className="absolute left-4 bottom-4 z-20 flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => signRef.current?.clear()}
+            disabled={busy}
+            aria-label="Clear signature"
+            title="Clear signature"
+            className={`${iconBtn} border-white/20 bg-white/10 text-white/85 hover:bg-white/20`}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
+              <line x1="18" y1="9" x2="12" y2="15" />
+              <line x1="12" y1="9" x2="18" y2="15" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={busy || waiting === 0}
+            aria-label="Skip to next photo"
+            title="Skip"
+            className={`${iconBtn} border-white/20 bg-white/10 text-white/85 hover:bg-white/20`}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth={1} strokeLinejoin="round" aria-hidden>
+              <path d="M5 4l10 8-10 8z" />
+              <rect x="17.5" y="4" width="2.5" height="16" rx="1" stroke="none" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={busy}
+            aria-label="Discard photo"
+            title="Discard"
+            className={`${iconBtn} border-rose-400/30 bg-rose-500/10 text-rose-300/90 hover:bg-rose-500/20`}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -12,7 +12,10 @@ type SpotlightState = 'idle' | 'entering' | 'visible' | 'exiting';
 
 // Spotlight bounce-in tuning.
 const ENTER_MS = 1300;          // rise-from-bottom → settle duration
-const HOLD_MS = 3000;           // featured dwell before handing off to the wall
+// Featured dwell before handing off to the wall. Must stay >= the SparkleBurst
+// lifetime (~2.2s): the sparkle is unmounted when the spotlight leaves `visible`
+// after HOLD_MS, so a shorter value would cut the burst off mid-animation.
+const HOLD_MS = 3000;
 // Gentle single overshoot ("subtle" bounce). translateY eases from the bottom to
 // center, overshoots slightly PAST center, and settles — the bubble is never scaled.
 const ENTER_EASE_BOUNCE = 'cubic-bezier(0.34, 1.28, 0.64, 1)';

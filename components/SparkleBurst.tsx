@@ -101,5 +101,3 @@ export const SparkleBurst: React.FC<SparkleBurstProps> = ({ size }) => {
     />
   );
 };
-
-export default SparkleBurst;

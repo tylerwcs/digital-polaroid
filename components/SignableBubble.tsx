@@ -52,34 +52,40 @@ export const SignableBubble = forwardRef<SignableBubbleHandle, SignableBubblePro
       },
     }), []);
 
+    // Signature canvas pinned to the bottom band of the photo circle. It rides
+    // in BubbleFrame's overlay slot — above the glass rim, matching how the
+    // finished signature is drawn on the wall — so the ink stays fully visible
+    // while signing. The overlay container is pointer-events-none, so this
+    // wrapper re-enables pointer events for drawing.
+    const signaturePad = (
+      <div
+        className="absolute left-0 right-0 bottom-0 cursor-crosshair pointer-events-auto"
+        style={{ width: band.width, height: band.height }}
+      >
+        <SignatureCanvas
+          ref={sigRef}
+          penColor="#ffffff"
+          onEnd={() => setHasDrawn(true)}
+          canvasProps={{
+            width: band.width,
+            height: band.height,
+            className: 'absolute inset-0',
+          }}
+          clearOnResize={false}
+        />
+        {/* "Sign here" hint, fades once drawing starts */}
+        {!hasDrawn && (
+          <div className="absolute inset-0 flex items-end justify-center pb-2 pointer-events-none">
+            <span className="text-white/70 text-sm font-medium drop-shadow">Sign here</span>
+          </div>
+        )}
+      </div>
+    );
+
     return (
-      <BubbleFrame diameter={diameter}>
+      <BubbleFrame diameter={diameter} overlay={signaturePad}>
         {/* Captured photo */}
         <img src={imageDataUrl} alt="" className="w-full h-full object-cover" draggable={false} />
-
-        {/* Signature canvas pinned to the bottom band of the photo circle */}
-        <div
-          className="absolute left-0 right-0 bottom-0 cursor-crosshair"
-          style={{ width: band.width, height: band.height }}
-        >
-          <SignatureCanvas
-            ref={sigRef}
-            penColor="#ffffff"
-            onEnd={() => setHasDrawn(true)}
-            canvasProps={{
-              width: band.width,
-              height: band.height,
-              className: 'absolute inset-0',
-            }}
-            clearOnResize={false}
-          />
-          {/* "Sign here" hint, fades once drawing starts */}
-          {!hasDrawn && (
-            <div className="absolute inset-0 flex items-end justify-center pb-2 pointer-events-none">
-              <span className="text-white/70 text-sm font-medium drop-shadow">Sign here</span>
-            </div>
-          )}
-        </div>
       </BubbleFrame>
     );
   }

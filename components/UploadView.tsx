@@ -82,8 +82,16 @@ const UploadView: React.FC = () => {
     if (!captured) return;
     setStage('sending');
 
+    // A plain Date.now() id collides when two phones send in the same
+    // millisecond, and the server stores the image at `${id}.jpg`, so a
+    // collision means one photo silently overwrites another's file. Append
+    // random entropy. (Not crypto.randomUUID: it is undefined in insecure
+    // contexts — plain http — which is the exact case the camera fallback
+    // handles, so it would throw for the guests most likely to hit it.)
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
     const result = await savePending({
-      id: Date.now().toString(),
+      id,
       image: captured,
       rotation: Math.random() * 6 - 3,
       timestamp: Date.now(),

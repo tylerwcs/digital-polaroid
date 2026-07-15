@@ -4,6 +4,7 @@ import { PHOTO_INSET_RATIO } from '../lib/bubbleGeometry';
 interface BubbleFrameProps {
   diameter: number;                 // full bubble diameter in px (2 * radius)
   children?: React.ReactNode;       // content rendered inside the circular photo area
+  overlay?: React.ReactNode;        // content rendered ABOVE the glass rim (e.g. the signature)
   className?: string;
   style?: React.CSSProperties;
 }
@@ -11,15 +12,26 @@ interface BubbleFrameProps {
 // The shared bubble visual: a square wrapper holding a circular photo area
 // (clipped) with the bubble.png glass rim overlaid on top, plus the lift/halo
 // shadow. No data logic — callers slot a photo, a <video>, or a signing canvas
-// in via children.
+// in via children. Anything that must sit on top of the glass rim (the
+// signature) goes in `overlay`, which is clipped to the same photo circle.
 export const BubbleFrame: React.FC<BubbleFrameProps> = ({
   diameter,
   children,
+  overlay,
   className = '',
   style = {},
 }) => {
   const photoSize = diameter * PHOTO_INSET_RATIO;
   const photoOffset = (diameter - photoSize) / 2;
+
+  // The circular photo area's box, shared by the clipped children layer and the
+  // clipped overlay layer so the signature stays aligned to the photo circle.
+  const circleBox: React.CSSProperties = {
+    width: photoSize,
+    height: photoSize,
+    top: photoOffset,
+    left: photoOffset,
+  };
 
   return (
     <div
@@ -33,15 +45,7 @@ export const BubbleFrame: React.FC<BubbleFrameProps> = ({
       }}
     >
       {/* Circular photo area (children clipped to the circle) */}
-      <div
-        className="absolute overflow-hidden rounded-full bg-black/20"
-        style={{
-          width: photoSize,
-          height: photoSize,
-          top: photoOffset,
-          left: photoOffset,
-        }}
-      >
+      <div className="absolute overflow-hidden rounded-full bg-black/20" style={circleBox}>
         {children}
       </div>
 
@@ -52,6 +56,16 @@ export const BubbleFrame: React.FC<BubbleFrameProps> = ({
         className="absolute inset-0 w-full h-full pointer-events-none select-none"
         draggable={false}
       />
+
+      {/* Top layer above the glass rim, clipped to the same circle (e.g. the signature) */}
+      {overlay && (
+        <div
+          className="absolute overflow-hidden rounded-full pointer-events-none"
+          style={circleBox}
+        >
+          {overlay}
+        </div>
+      )}
     </div>
   );
 };

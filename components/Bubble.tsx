@@ -25,30 +25,32 @@ export const Bubble: React.FC<BubbleProps> = ({
   // Signature band height as a % of the photo circle (the BubbleFrame children box).
   const bandHeightPct = `${SIGNATURE_BAND_HEIGHT_RATIO * 100}%`;
 
+  // Signature sits on the top layer (above the glass rim) so it stays fully
+  // visible rather than being dimmed under the bubble.png overlay.
+  const signatureOverlay =
+    imageUrl && photo?.signature ? (
+      <img
+        src={photo.signature}
+        alt=""
+        className="absolute left-0 right-0 bottom-0 w-full"
+        style={{
+          height: bandHeightPct,
+          objectFit: 'contain',
+          objectPosition: 'center bottom',
+          filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))',
+        }}
+        draggable={false}
+      />
+    ) : undefined;
+
   return (
-    <BubbleFrame diameter={diameter} className={className} style={style}>
+    <BubbleFrame diameter={diameter} className={className} style={style} overlay={signatureOverlay}>
       {/* Photo fills the circle */}
       {imageUrl && (
         <img
           src={imageUrl}
           alt=""
           className="w-full h-full object-cover"
-          draggable={false}
-        />
-      )}
-
-      {/* Signature overlay on the lower band */}
-      {imageUrl && photo?.signature && (
-        <img
-          src={photo.signature}
-          alt=""
-          className="absolute left-0 right-0 bottom-0 w-full pointer-events-none"
-          style={{
-            height: bandHeightPct,
-            objectFit: 'contain',
-            objectPosition: 'center bottom',
-            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))',
-          }}
           draggable={false}
         />
       )}

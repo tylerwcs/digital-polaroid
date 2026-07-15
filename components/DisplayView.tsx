@@ -4,10 +4,18 @@ import { getPhotos, subscribeToUpdates, subscribeToDelete } from '../services/st
 import { PhotoEntry } from '../types';
 import { Bubble } from './Bubble';
 import { DebugPanel } from './DebugPanel';
+import { SparkleBurst } from './SparkleBurst';
 import { useBubblePhysics } from '../hooks/useBubblePhysics';
 import { PHYSICS, computeSpawnRadius, randomInRange } from '../lib/bubblePhysics';
 
 type SpotlightState = 'idle' | 'entering' | 'visible' | 'exiting';
+
+// Spotlight bounce-in tuning.
+const ENTER_MS = 1300;          // rise-from-bottom → settle duration
+const HOLD_MS = 3000;           // featured dwell before handing off to the wall
+// Gentle single overshoot ("subtle" bounce). translateY eases from the bottom to
+// center, overshoots slightly PAST center, and settles — the bubble is never scaled.
+const ENTER_EASE_BOUNCE = 'cubic-bezier(0.34, 1.28, 0.64, 1)';
 
 const DisplayView: React.FC = () => {
   const physics = useBubblePhysics();
@@ -143,7 +151,7 @@ const DisplayView: React.FC = () => {
       raf1 = requestAnimationFrame(() => {
         raf2 = requestAnimationFrame(() => setSpotlightReady(true));
       });
-      t = setTimeout(() => setSpotlightState('visible'), 1500);
+      t = setTimeout(() => setSpotlightState('visible'), ENTER_MS);
       return () => {
         clearTimeout(t);
         if (innerTimer) clearTimeout(innerTimer);
@@ -171,7 +179,7 @@ const DisplayView: React.FC = () => {
           }
         }
         setSpotlightState('exiting');
-      }, 5000);
+      }, HOLD_MS);
     } else if (spotlightState === 'exiting') {
       // After exit animation completes, spawn the new bubble at the target slot
       t = setTimeout(() => {
@@ -200,6 +208,10 @@ const DisplayView: React.FC = () => {
   }, [spotlightState]);
 
   const isSpotlightActive = spotlightState !== 'idle';
+
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Spotlight diameter: ~60% of the shorter viewport dimension (1.5× the previous size)
   const spotlightDiameter = typeof window !== 'undefined'
@@ -382,10 +394,15 @@ const DisplayView: React.FC = () => {
         return (
           <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none">
             <div
-              className="ease-out"
               style={{
                 transition: spotlightReady
-                  ? `transform ${spotlightState === 'entering' ? 1500 : 800}ms ease-out`
+                  ? `transform ${spotlightState === 'entering' ? ENTER_MS : 800}ms ${
+                      spotlightState === 'entering'
+                        ? reducedMotion
+                          ? 'ease-out'
+                          : ENTER_EASE_BOUNCE
+                        : 'ease-out'
+                    }`
                   : 'none',
                 transform,
               }}
@@ -395,6 +412,15 @@ const DisplayView: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* Sparkle burst — fires when the bubble settles (entering → visible). Sits
+          above the spotlight bubble (z-[61]) so the ring reads over it. Keyed by
+          photo id so it replays for each new photo. Skipped under reduced motion. */}
+      {spotlightPhoto && spotlightState === 'visible' && !reducedMotion && (
+        <div className="fixed inset-0 z-[61] flex items-center justify-center pointer-events-none">
+          <SparkleBurst key={spotlightPhoto.id} size={spotlightDiameter} />
+        </div>
+      )}
     </div>
   );
 };

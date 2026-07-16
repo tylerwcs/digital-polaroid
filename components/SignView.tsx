@@ -195,7 +195,6 @@ const SignView: React.FC = () => {
   // the bubble lags the finger and never crosses the 70% line.
   const followY = reducedMotion ? 0 : maxTravel * (1 - Math.exp(-pull / (maxTravel * 1.25)));
   const followScale = reducedMotion ? 1 : 1 + charge * 0.08; // subtle uniform grow (faces never distort)
-  const shakeAmp = charge * 2.4; // px
 
   const followInner =
     launching && !reducedMotion
@@ -210,12 +209,9 @@ const SignView: React.FC = () => {
     ? 'none'
     : 'transform 340ms cubic-bezier(0.34, 1.5, 0.5, 1)'; // spring back to rest
 
-  const shakeStyle: React.CSSProperties | undefined =
-    sling.isDragging && !reducedMotion && pull > 2
-      ? ({ animation: 'sw-shake 90ms linear infinite', '--amp': shakeAmp.toFixed(2) } as React.CSSProperties)
-      : undefined;
-
   const swipeOpacity = launching ? 0 : Math.max(0, 1 - pull / 45); // fades away the moment you pull
+  // The entire area below the bubble's resting position is the pull zone.
+  const pullTop = BUBBLE_TOP_PX + diameter;
 
   const iconBtn =
     'w-14 h-14 rounded-full border flex items-center justify-center transition-colors ' +
@@ -225,12 +221,6 @@ const SignView: React.FC = () => {
     <div className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center px-4 overflow-hidden relative">
       <style>{`
         @keyframes sw-wave { 0%,100%{opacity:.25;transform:translateY(-3px);} 50%{opacity:1;transform:translateY(3px);} }
-        @keyframes sw-shake {
-          0%,100%{transform:translate(0,0);}
-          25%{transform:translate(calc(var(--amp)*1px),calc(var(--amp)*-1px));}
-          50%{transform:translate(calc(var(--amp)*-1px),calc(var(--amp)*1px));}
-          75%{transform:translate(calc(var(--amp)*-1px),calc(var(--amp)*-1px));}
-        }
       `}</style>
 
       {/* Themed background video (same asset as the wall) */}
@@ -253,7 +243,7 @@ const SignView: React.FC = () => {
           )}
 
           {/* Bubble — fixed upper position (stable whether or not the badge shows),
-              follows the finger on pull, charges (grows + shakes), flicks up on launch. */}
+              follows the finger on pull, grows as it charges, flicks up on launch. */}
           <div
             className="absolute left-1/2 z-10"
             style={{
@@ -264,24 +254,32 @@ const SignView: React.FC = () => {
               willChange: 'transform',
             }}
           >
-            <div style={shakeStyle}>
-              <SignableBubble
-                key={current.id}
-                ref={signRef}
-                diameter={diameter}
-                imageDataUrl={current.imageUrl}
-              />
-            </div>
+            <SignableBubble
+              key={current.id}
+              ref={signRef}
+              diameter={diameter}
+              imageDataUrl={current.imageUrl}
+            />
           </div>
 
-          {/* Swipe / pull trigger zone, anchored at 70% of the viewport (fades as you pull). */}
+          {/* Pull zone — the whole area below the bubble's resting position is grabbable. */}
           <div
             {...sling.handlers}
-            className="absolute left-0 right-0 z-10 flex flex-col items-center gap-2 select-none"
+            className="absolute left-0 right-0 z-10"
             style={{
-              top: '70%',
+              top: pullTop,
+              bottom: 0,
               touchAction: 'none',
               cursor: 'grab',
+            }}
+            aria-label="Pull down to send"
+          />
+
+          {/* SWIPE affordance — visual only; the pull zone behind it captures the drag. */}
+          <div
+            className="absolute left-0 right-0 z-10 flex flex-col items-center gap-2 select-none pointer-events-none"
+            style={{
+              top: '70%',
               opacity: swipeOpacity,
               transition: sling.isDragging ? 'none' : 'opacity 0.2s ease',
             }}
@@ -296,7 +294,7 @@ const SignView: React.FC = () => {
                   viewBox="0 0 34 20"
                   style={{
                     opacity: 0.5,
-                    animation: sling.isDragging ? undefined : `sw-wave 1.4s ease-in-out ${i * 0.18}s infinite`,
+                    animation: `sw-wave 1.4s ease-in-out ${i * 0.18}s infinite`,
                   }}
                 >
                   <path

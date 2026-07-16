@@ -14,8 +14,8 @@ import {
 
 // How long the bubble takes to flick up and off the screen on launch.
 const FLICK_MS = 450;
-// The bubble never charges past this fraction of the viewport height (the swipe line).
-const MAX_PULL_FRACTION = 0.7;
+// The bubble never charges past this fraction of the viewport height.
+const MAX_PULL_FRACTION = 0.82;
 // The bubble's fixed CSS top (`top: 3.5rem`); tablet safe-area insets are smaller.
 const BUBBLE_TOP_PX = 56;
 

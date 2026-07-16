@@ -37,6 +37,12 @@ const DisplayView: React.FC = () => {
   useEffect(() => { physicsRef.current = physics; });
 
   const handoffRef = useRef<{ x: number; y: number; radius: number } | null>(null);
+  // Bubble evicted to make room for the incoming one. Its physical removal is done
+  // by the 'exiting' timer below rather than a timer of its own: setSpotlightState
+  // re-runs this effect, and the cleanup would cancel any timer scheduled here,
+  // leaving the bubble in the array forever (invisible) and letting the wall grow
+  // past MAX_BUBBLES.
+  const evictIdRef = useRef<string | null>(null);
 
   // Upload URL
   useEffect(() => {
@@ -124,9 +130,15 @@ const DisplayView: React.FC = () => {
         return next;
       });
       setQueue((prev) => prev.filter((p) => p.id !== deletedId));
-      // Remove any bubble with this photoId (read live state via ref)
+      // Remove any bubble with this photoId (read live state via ref). markExiting
+      // only plays the pop — without the follow-up remove the bubble would sit in
+      // the array forever, invisible. This effect's cleanup runs on unmount only,
+      // so nothing cancels this timer.
       const target = physicsRef.current.bubbles.find((b) => b.photoId === deletedId);
-      if (target) physicsRef.current.markExiting(target.id);
+      if (target) {
+        physicsRef.current.markExiting(target.id);
+        window.setTimeout(() => physicsRef.current.remove(target.id), 600);
+      }
       if (spotlightPhotoRef.current?.id === deletedId) {
         setSpotlightState('exiting');
       }
@@ -146,7 +158,6 @@ const DisplayView: React.FC = () => {
   // Spotlight state machine + handoff
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
-    let innerTimer: ReturnType<typeof setTimeout> | undefined;
 
     if (spotlightState === 'entering') {
       // Give the browser one frame to paint the start-position before kicking the transition.
@@ -157,7 +168,6 @@ const DisplayView: React.FC = () => {
       t = setTimeout(() => setSpotlightState('visible'), ENTER_MS);
       return () => {
         clearTimeout(t);
-        if (innerTimer) clearTimeout(innerTimer);
         cancelAnimationFrame(raf1);
         cancelAnimationFrame(raf2);
       };
@@ -170,13 +180,16 @@ const DisplayView: React.FC = () => {
           const h = container.clientHeight;
           const radius = computeSpawnRadius(w, h);
 
-          if (physicsRef.current.bubbles.length >= PHYSICS.MAX_BUBBLES) {
+          // Only live bubbles count toward the cap — an exiting one is already on
+          // its way out and must never be picked again as the eviction target.
+          const liveBubbles = physicsRef.current.bubbles.filter((b) => b.lifecycle !== 'exiting');
+          if (liveBubbles.length >= PHYSICS.MAX_BUBBLES) {
             // Evict oldest: pick the bubble with smallest spawnTime
-            const oldest = [...physicsRef.current.bubbles].sort((a, b) => a.spawnTime - b.spawnTime)[0];
+            const oldest = [...liveBubbles].sort((a, b) => a.spawnTime - b.spawnTime)[0];
             handoffRef.current = { x: oldest.x, y: oldest.y, radius: oldest.radius };
             physicsRef.current.markExiting(oldest.id);
-            // Schedule physical removal after pop animation
-            innerTimer = setTimeout(() => physicsRef.current.remove(oldest.id), 600);
+            // Removal happens in the 'exiting' timer below, after the pop animation.
+            evictIdRef.current = oldest.id;
           } else {
             handoffRef.current = { x: w / 2, y: h / 2, radius };
           }
@@ -186,6 +199,12 @@ const DisplayView: React.FC = () => {
     } else if (spotlightState === 'exiting') {
       // After exit animation completes, spawn the new bubble at the target slot
       t = setTimeout(() => {
+        // Physically remove the evicted bubble now that its pop animation has run.
+        // This runs before the setSpotlightState below, so nothing cancels it.
+        if (evictIdRef.current) {
+          physicsRef.current.remove(evictIdRef.current);
+          evictIdRef.current = null;
+        }
         const target = handoffRef.current;
         const photo = spotlightPhotoRef.current;
         if (target && photo) {
@@ -206,7 +225,6 @@ const DisplayView: React.FC = () => {
     }
     return () => {
       clearTimeout(t);
-      if (innerTimer) clearTimeout(innerTimer);
     };
   }, [spotlightState]);
 

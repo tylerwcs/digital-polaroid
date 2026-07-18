@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
@@ -72,7 +73,16 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'photos.json');
+// Photo metadata store. Keep it next to UPLOAD_DIR so it lands on the same
+// persistent volume as the images (its parent dir, so it isn't served under
+// /uploads). Falls back to the app dir locally when no volume is configured.
+const DATA_FILE = process.env.PHOTOS_DATA_FILE
+  || path.join(path.dirname(UPLOAD_DIR), 'photos.json');
+
+// Built frontend (vite build output). Present in production single-service
+// deploys (e.g. Railway); absent in local dev where Vite serves the app.
+const DIST_DIR = path.resolve(__dirname, '..', 'dist');
+const SERVE_FRONTEND = existsSync(path.join(DIST_DIR, 'index.html'));
 
 app.use(cors());
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
@@ -91,6 +101,13 @@ app.get(`${UPLOAD_URL_BASE}/:fileName`, (req, res, next) => {
     if (err) next(err);
   });
 });
+
+// Serve the built frontend (single-service deploys). API and uploads routes are
+// registered above/below and take precedence; the SPA fallback is added last.
+if (SERVE_FRONTEND) {
+  app.use(express.static(DIST_DIR));
+  console.log(`[snapwall] Serving frontend from ${DIST_DIR}`);
+}
 
 // In-memory cache
 let photos = [];
@@ -649,6 +666,20 @@ app.post('/api/export-video', async (req, res) => {
     activeExports = Math.max(activeExports - 1, 0);
   }
 });
+
+// SPA fallback: serve index.html for client-side routes so a direct visit or
+// refresh works. Implemented as middleware (not a `*` route) so it works across
+// Express 4/5 without relying on path-to-regexp wildcard syntax. Registered after
+// all API routes; skips non-GET, API and uploads paths so those still 404 properly.
+if (SERVE_FRONTEND) {
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    if (req.path.startsWith('/api') || req.path.startsWith(UPLOAD_URL_BASE)) {
+      return next();
+    }
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
+}
 
 // Socket.IO connection
 io.on('connection', (socket) => {

@@ -1,6 +1,16 @@
+const isLoopbackHost = (hostname: string) =>
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1' ||
+  hostname === '[::1]' ||
+  hostname.endsWith('.localhost');
+
 const getApiUrl = () => {
   if (typeof window === 'undefined') return 'http://localhost:3000';
-  return `http://${window.location.hostname}:3000`;
+  const { hostname, origin } = window.location;
+  // Local dev: Vite (5173) talks to the API on :3000.
+  if (isLoopbackHost(hostname)) return `http://${hostname}:3000`;
+  // Production single-service (e.g. Railway): API shares the page's origin.
+  return origin;
 };
 
 const API_URL = (import.meta.env.VITE_API_URL || getApiUrl()).replace(/\/+$/, '');

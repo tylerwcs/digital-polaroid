@@ -6,26 +6,31 @@ const parseNumberEnv = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const getApiUrl = () => {
-  // If window is not defined (SSR), assume local backend
-  if (typeof window === 'undefined') return `http://localhost:3000`;
-  const hostname = window.location.hostname;
-  return `http://${hostname}:3000`;
-};
-
-// Prefer explicit API URL for deployed environments (e.g. Render),
-// fall back to local dev assumption.
-const API_URL = (import.meta.env.VITE_API_URL || getApiUrl()).replace(/\/+$/, '');
-const socket = io(API_URL);
-
-const MAX_CLIENT_FILE_BYTES = parseNumberEnv(import.meta.env.VITE_MAX_UPLOAD_BYTES, 4 * 1024 * 1024);
-const MAX_CLIENT_FILE_MB = Math.round((MAX_CLIENT_FILE_BYTES / (1024 * 1024)) * 10) / 10;
-
+// Declared before getApiUrl — API_URL is evaluated at module load and calls it,
+// so this must already be initialized (const is not hoisted).
 const isLoopbackHost = (hostname: string) =>
   hostname === 'localhost' ||
   hostname === '127.0.0.1' ||
   hostname === '[::1]' ||
   hostname.endsWith('.localhost');
+
+const getApiUrl = () => {
+  // If window is not defined (SSR), assume local backend
+  if (typeof window === 'undefined') return `http://localhost:3000`;
+  const { hostname, origin } = window.location;
+  // Local dev: Vite (5173) talks to the API on :3000.
+  if (isLoopbackHost(hostname)) return `http://${hostname}:3000`;
+  // Production single-service (e.g. Railway): the API is served from the same
+  // origin as the page, so never hardcode a port or scheme here.
+  return origin;
+};
+
+// Prefer explicit API URL for deployed environments, else infer from the origin.
+const API_URL = (import.meta.env.VITE_API_URL || getApiUrl()).replace(/\/+$/, '');
+const socket = io(API_URL);
+
+const MAX_CLIENT_FILE_BYTES = parseNumberEnv(import.meta.env.VITE_MAX_UPLOAD_BYTES, 4 * 1024 * 1024);
+const MAX_CLIENT_FILE_MB = Math.round((MAX_CLIENT_FILE_BYTES / (1024 * 1024)) * 10) / 10;
 
 const toAbsoluteImageUrl = <T extends { imageUrl?: string }>(photo: T): T => {
   if (!photo?.imageUrl || photo.imageUrl.startsWith('data:')) {

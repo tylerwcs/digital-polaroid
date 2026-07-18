@@ -13,6 +13,7 @@ import { createPendingQueue, sanitizePending, DEFAULT_MAX_PENDING } from './pend
 import os from 'os';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
+import ffmpegStatic from 'ffmpeg-static';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +26,10 @@ const SAVE_DEBOUNCE_MS = parseInt(process.env.SAVE_DEBOUNCE_MS || '1000', 10);
 const ENABLE_DISK_CACHE = (process.env.ENABLE_DISK_CACHE || 'false').toLowerCase() === 'true';
 const MAX_PENDING = parseInt(process.env.MAX_PENDING || String(DEFAULT_MAX_PENDING), 10);
 
-const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+// Prefer the binary shipped by the ffmpeg-static npm package: it is installed by
+// `npm install` and so exists on every builder (Nixpacks, Railpack, Docker),
+// unlike a system package which depends on the host image. Falls back to PATH.
+const FFMPEG_PATH = process.env.FFMPEG_PATH || ffmpegStatic || 'ffmpeg';
 const MAX_CONCURRENT_EXPORTS = parseInt(process.env.MAX_CONCURRENT_EXPORTS || '2', 10);
 const EXPORT_BG_PATH = path.resolve(__dirname, '..', 'public', 'exportBG.mp4');
 const EXPORT_MASTHEAD_PATH = path.resolve(__dirname, '..', 'public', 'masthead.png');

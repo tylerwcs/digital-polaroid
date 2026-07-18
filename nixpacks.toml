@@ -1,0 +1,8 @@
+# Railway builds this repo with Nixpacks. The server shells out to `ffmpeg` for
+# the bubble video export (POST /api/export-video), and ffmpeg is not in the
+# default Node image — without it that route fails with "ffmpeg failed to start".
+#
+# The leading "..." keeps the packages Nixpacks auto-detects (node, npm). Dropping
+# it would REPLACE them and break the build.
+[phases.setup]
+nixPkgs = ["...", "ffmpeg"]

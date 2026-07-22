@@ -344,7 +344,7 @@ const DisplayView: React.FC = () => {
               <Bubble
                 photo={null}
                 diameter={Math.min(window.innerWidth, window.innerHeight) * 0.3}
-                placeholderText="Scan the QR to add a photo"
+                placeholderText="Scan the QR code to add your photo"
               />
             </div>
           )}

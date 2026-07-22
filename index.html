@@ -9,6 +9,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Caveat:wght@700&display=swap" rel="stylesheet">
     <style>
+      /* Disable iOS Safari's pull-to-refresh: a swipe-down (like the bubble
+         launch gesture) at the top of the page would otherwise reload it. This
+         only stops the overscroll/refresh, not normal in-content scrolling. */
+      html, body {
+        overscroll-behavior: none;
+      }
       body {
         font-family: 'Inter', sans-serif;
         background-color: #09090b;

@@ -218,7 +218,10 @@ const SignView: React.FC = () => {
     'active:scale-95 disabled:opacity-30 disabled:pointer-events-none';
 
   return (
-    <div className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center px-4 overflow-hidden relative">
+    <div
+      className="min-h-[100dvh] w-screen bg-black text-white flex flex-col items-center px-4 overflow-hidden relative"
+      style={{ overscrollBehavior: 'none', touchAction: 'none' }}
+    >
       <style>{`
         @keyframes sw-wave { 0%,100%{opacity:.25;transform:translateY(-3px);} 50%{opacity:1;transform:translateY(3px);} }
       `}</style>

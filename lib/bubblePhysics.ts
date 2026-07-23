@@ -19,6 +19,15 @@ export const PHYSICS = {
   MAX_BUBBLES: 8,
 };
 
+// Grid wall (/wall-6) tuning — a denser variant of the bubble wall. Kept separate
+// from PHYSICS so the DebugPanel on /wall can't alter grid sizing, and vice versa.
+export const GRID = {
+  MAX_BUBBLES: 20,        // Hard cap; oldest is evicted when a new photo pushes past this.
+  FILL_FACTOR: 0.6,       // Fraction of container area the bubbles collectively aim to cover.
+  RADIUS_MIN: 90,         // Never shrink smaller than this, even at capacity.
+  RADIUS_MAX: 380,        // Never grow larger than this when only a few bubbles are present.
+};
+
 export interface BubbleState {
   id: string;
   photoId: string;
@@ -41,6 +50,43 @@ export const computeSpawnRadius = (viewportW: number, viewportH: number): number
   const dim = Math.min(viewportW, viewportH);
   const r = dim * randomInRange(PHYSICS.RADIUS_RATIO_MIN, PHYSICS.RADIUS_RATIO_MAX);
   return Math.max(PHYSICS.RADIUS_MIN, Math.min(PHYSICS.RADIUS_MAX, r));
+};
+
+// Shared radius for the grid wall: shrink bubbles as their count grows so the
+// wall always looks "filled". Derived from equal-area sharing of the container
+// (each bubble covers ~ FILL_FACTOR * area / count), then clamped.
+export const computeGridRadius = (
+  containerW: number, containerH: number, count: number
+): number => {
+  if (count <= 0) return GRID.RADIUS_MAX;
+  const area = containerW * containerH;
+  const r = Math.sqrt((area * GRID.FILL_FACTOR) / (count * Math.PI));
+  return Math.max(GRID.RADIUS_MIN, Math.min(GRID.RADIUS_MAX, r));
+};
+
+// Pick a spawn position that is as far as possible from existing bubble centers
+// (samples a handful of random candidates and keeps the roomiest). Approximates
+// "pop into an empty slot" without a rigid grid.
+export const pickSpawnPosition = (
+  containerW: number, containerH: number, radius: number,
+  existing: { x: number; y: number }[]
+): { x: number; y: number } => {
+  const sampleX = () => randomInRange(radius, Math.max(radius, containerW - radius));
+  const sampleY = () => randomInRange(radius, Math.max(radius, containerH - radius));
+  if (existing.length === 0) return { x: sampleX(), y: sampleY() };
+  let best = { x: sampleX(), y: sampleY() };
+  let bestScore = -Infinity;
+  for (let i = 0; i < 12; i++) {
+    const x = sampleX();
+    const y = sampleY();
+    let minD = Infinity;
+    for (const b of existing) {
+      const d = Math.hypot(b.x - x, b.y - y);
+      if (d < minD) minD = d;
+    }
+    if (minD > bestScore) { bestScore = minD; best = { x, y }; }
+  }
+  return best;
 };
 
 export const randomWanderTarget = () => ({

@@ -8,6 +8,7 @@ export interface UseBubblePhysicsResult {
   spawn: (params: { photoId: string; x: number; y: number; radius: number; vx?: number; vy?: number }) => string;
   remove: (id: string) => void;
   markExiting: (id: string) => void;
+  resizeAll: (radius: number) => void;
   getBubble: (id: string) => BubbleState | undefined;
 }
 
@@ -57,6 +58,17 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
   const markExiting = useCallback((id: string) => {
     bubblesRef.current = bubblesRef.current.map((b) =>
       b.id === id ? { ...b, lifecycle: 'exiting' as const } : b
+    );
+    bump();
+  }, [bump]);
+
+  // Resize every non-exiting bubble to a shared radius. Used by the grid wall to
+  // keep the display "filled" — bubbles shrink as more arrive, grow as they leave.
+  // The physics loop reads radius each frame for both positioning and collisions,
+  // so any resulting overlap is resolved (with a bounce) over the next few frames.
+  const resizeAll = useCallback((radius: number) => {
+    bubblesRef.current = bubblesRef.current.map((b) =>
+      b.lifecycle === 'exiting' ? b : { ...b, radius }
     );
     bump();
   }, [bump]);
@@ -168,6 +180,7 @@ export const useBubblePhysics = (): UseBubblePhysicsResult => {
     spawn,
     remove,
     markExiting,
+    resizeAll,
     getBubble,
   };
 };

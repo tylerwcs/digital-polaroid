@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import { getPhotos, subscribeToUpdates, subscribeToDelete } from '../services/storageService';
 import { PhotoEntry } from '../types';
 import { Bubble } from './Bubble';
@@ -20,19 +19,11 @@ const POP_MS = 500;
 const DisplayViewGrid: React.FC = () => {
   const physics = useBubblePhysics();
   const [photoMap, setPhotoMap] = useState<Map<string, PhotoEntry>>(new Map());
-  const [uploadUrl, setUploadUrl] = useState<string>('');
   // Ids currently animating their scale from 0 -> 1 (the "pop" on arrival).
   const [growingIds, setGrowingIds] = useState<Set<string>>(new Set());
 
   const physicsRef = useRef(physics);
   useEffect(() => { physicsRef.current = physics; });
-
-  // Upload URL for the QR (points at the download page, matching /wall).
-  useEffect(() => {
-    const explicit = import.meta.env.VITE_UPLOAD_URL as string | undefined;
-    if (explicit) setUploadUrl(explicit);
-    else if (typeof window !== 'undefined') setUploadUrl(window.location.origin);
-  }, []);
 
   // Live (non-exiting) bubbles — the ones that count toward sizing & capacity.
   const liveBubbles = () => physicsRef.current.bubbles.filter((b) => b.lifecycle !== 'exiting');
@@ -274,21 +265,12 @@ const DisplayViewGrid: React.FC = () => {
             <Bubble
               photo={null}
               diameter={Math.min(window.innerWidth, window.innerHeight) * 0.3}
-              placeholderText="Scan the QR to add a photo"
+              placeholderText="Waiting for the first photo"
             />
           </div>
         )}
       </div>
 
-      {/* QR (scan to download) — matches /wall. */}
-      <div className="absolute bottom-12 right-8 z-30 flex flex-col items-center gap-4">
-        {uploadUrl && (
-          <div className="bg-white p-3 rounded-xl shadow-2xl border border-black/10">
-            <QRCodeSVG value={`${uploadUrl}/#/download`} size={100} level="H" bgColor="#ffffff" fgColor="#000000" />
-            <p className="text-center text-xs font-semibold mt-2 text-black">Scan to Download</p>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
